@@ -27,8 +27,6 @@ JOBS_FILE = DATA_DIR / "jobs.json"
 LOG_FILE = LOG_DIR / "backup.log"
 SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "jotta123")
-JOTTA_USERNAME = os.environ.get("JOTTA_USERNAME", "")
-JOTTA_TOKEN = os.environ.get("JOTTA_TOKEN", "")
 TZ = os.environ.get("TZ", "Europe/Oslo")
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,22 +45,18 @@ scheduler.start()
 # ---------------------------------------------------------------------------
 # Hjelpefunksjoner – jobber
 # ---------------------------------------------------------------------------
-
 def load_jobs():
     if JOBS_FILE.exists():
         with open(JOBS_FILE) as f:
             return json.load(f)
     return []
 
-
 def save_jobs(jobs):
     with open(JOBS_FILE, "w") as f:
         json.dump(jobs, f, indent=2, ensure_ascii=False)
 
-
 def get_job(job_id):
     return next((j for j in load_jobs() if j["id"] == job_id), None)
-
 
 def update_job_field(job_id, **kwargs):
     jobs = load_jobs()
@@ -74,7 +68,6 @@ def update_job_field(job_id, **kwargs):
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-
 def append_log(level: str, message: str, job_id: str = None):
     entry = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -84,7 +77,6 @@ def append_log(level: str, message: str, job_id: str = None):
     }
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
 
 def read_logs(limit=200):
     if not LOG_FILE.exists():
@@ -101,8 +93,7 @@ def read_logs(limit=200):
 # ---------------------------------------------------------------------------
 # Backup-kjøring
 # ---------------------------------------------------------------------------
-running_jobs = {}  # job_id -> {"progress": int, "started": str, "thread": Thread}
-
+running_jobs = {}
 
 def run_backup(job_id: str):
     job = get_job(job_id)
@@ -116,11 +107,12 @@ def run_backup(job_id: str):
 
     env = os.environ.copy()
 
+    dest = job.get("dest_path") or job["name"]
     cmd = [
-        "jotta-cli", "upload",
+        "jotta-cli", "archive",
         job["source_path"],
-        job.get("dest_path", f"Jotta/Arkiv/{job['name']}"),
-        "--exclude-dirs", ".snapshot",
+        f"--remote={dest}",
+        "--nogui",
     ]
 
     try:
@@ -135,7 +127,6 @@ def run_backup(job_id: str):
         for line in proc.stdout:
             line = line.rstrip()
             output_lines.append(line)
-            # Prøv å tolke progress fra jotta-cli output
             if "%" in line:
                 try:
                     pct = int(line.split("%")[0].strip().split()[-1])
@@ -159,7 +150,6 @@ def run_backup(job_id: str):
             append_log("error", f"Backup feilet: {job['name']} — {err}", job_id)
 
     except FileNotFoundError:
-        # jotta-cli ikke installert / ikke i PATH
         msg = "jotta-cli ikke funnet. Sjekk installasjonen."
         update_job_field(job_id, status="error", progress=0, last_error=msg)
         append_log("error", f"{job['name']}: {msg}", job_id)
@@ -177,9 +167,7 @@ def run_backup_async(job_id: str):
 
 
 def register_job_schedule(job: dict):
-    """Registrer eller oppdater APScheduler-jobb."""
     sched_id = f"backup_{job['id']}"
-    # Fjern eksisterende
     if scheduler.get_job(sched_id):
         scheduler.remove_job(sched_id)
     if not job.get("enabled", True):
@@ -204,18 +192,15 @@ def register_job_schedule(job: dict):
     )
     append_log("info", f"Planlagt: {job['name']} — {schedule}")
 
-
 def bootstrap_schedules():
     for job in load_jobs():
         register_job_schedule(job)
-
 
 bootstrap_schedules()
 
 # ---------------------------------------------------------------------------
 # Auth-dekorator
 # ---------------------------------------------------------------------------
-
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -227,7 +212,6 @@ def login_required(f):
 # ---------------------------------------------------------------------------
 # API-endepunkter – Auth
 # ---------------------------------------------------------------------------
-
 @app.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json(force=True)
@@ -236,12 +220,10 @@ def login():
         return jsonify({"ok": True})
     return jsonify({"error": "Feil passord"}), 401
 
-
 @app.route("/api/logout", methods=["POST"])
 def logout():
     session.clear()
     return jsonify({"ok": True})
-
 
 @app.route("/api/auth/status")
 def auth_status():
@@ -250,18 +232,15 @@ def auth_status():
 # ---------------------------------------------------------------------------
 # API-endepunkter – Jobber
 # ---------------------------------------------------------------------------
-
 @app.route("/api/jobs", methods=["GET"])
 @login_required
 def list_jobs():
     jobs = load_jobs()
-    # Legg til live progress hvis jobb kjører
     for j in jobs:
         if j["id"] in running_jobs:
             j["progress"] = running_jobs[j["id"]].get("progress", 0)
             j["status"] = "running"
     return jsonify(jobs)
-
 
 @app.route("/api/jobs", methods=["POST"])
 @login_required
@@ -276,7 +255,7 @@ def create_job():
         "id": str(uuid.uuid4()),
         "name": data["name"],
         "source_path": data["source_path"],
-        "dest_path": data.get("dest_path", f"Jotta/Arkiv/{data['name']}"),
+        "dest_path": data.get("dest_path", data["name"]),
         "schedule": data["schedule"],
         "enabled": data.get("enabled", True),
         "status": "idle",
@@ -292,7 +271,6 @@ def create_job():
     register_job_schedule(job)
     append_log("info", f"Jobb opprettet: {job['name']}")
     return jsonify(job), 201
-
 
 @app.route("/api/jobs/<job_id>", methods=["PUT"])
 @login_required
@@ -313,7 +291,6 @@ def update_job(job_id):
     register_job_schedule(job)
     return jsonify(job)
 
-
 @app.route("/api/jobs/<job_id>", methods=["DELETE"])
 @login_required
 def delete_job(job_id):
@@ -326,7 +303,6 @@ def delete_job(job_id):
     append_log("info", f"Jobb slettet: {job_id}")
     return jsonify({"ok": True})
 
-
 @app.route("/api/jobs/<job_id>/run", methods=["POST"])
 @login_required
 def run_job_now(job_id):
@@ -338,11 +314,9 @@ def run_job_now(job_id):
     run_backup_async(job_id)
     return jsonify({"ok": True, "message": f"Backup startet: {job['name']}"})
 
-
 @app.route("/api/jobs/<job_id>/stop", methods=["POST"])
 @login_required
 def stop_job(job_id):
-    # Merk jobben som stoppet (vi kan ikke drepe subprocess direkte uten PID-tracking)
     update_job_field(job_id, status="idle", progress=0)
     running_jobs.pop(job_id, None)
     append_log("warning", f"Jobb stoppet manuelt: {job_id}")
@@ -351,7 +325,6 @@ def stop_job(job_id):
 # ---------------------------------------------------------------------------
 # API-endepunkter – Status/dashboard
 # ---------------------------------------------------------------------------
-
 @app.route("/api/stats")
 @login_required
 def stats():
@@ -375,7 +348,6 @@ def stats():
         "last_success": last_success,
     })
 
-
 @app.route("/api/logs")
 @login_required
 def get_logs():
@@ -389,7 +361,6 @@ def get_logs():
 # ---------------------------------------------------------------------------
 # Jotta-CLI status
 # ---------------------------------------------------------------------------
-
 @app.route("/api/jotta/status")
 @login_required
 def jotta_status():
@@ -411,7 +382,6 @@ def jotta_status():
 # ---------------------------------------------------------------------------
 # Jotta-CLI innlogging via personlig token
 # ---------------------------------------------------------------------------
-
 @app.route("/api/jotta/login", methods=["POST"])
 @login_required
 def jotta_login():
@@ -423,7 +393,6 @@ def jotta_login():
         return jsonify({"error": "Token mangler"}), 400
 
     try:
-        # Send token + enhetsnavn til jotta-cli login via stdin
         login_input = f"{token}\n{device_name}\n"
         result = subprocess.run(
             ["jotta-cli", "login"],
@@ -442,7 +411,6 @@ def jotta_login():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @app.route("/api/jotta/logout", methods=["POST"])
 @login_required
 def jotta_logout():
@@ -460,7 +428,6 @@ def jotta_logout():
 # ---------------------------------------------------------------------------
 # Frontend-serving
 # ---------------------------------------------------------------------------
-
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_frontend(path):
@@ -469,7 +436,6 @@ def serve_frontend(path):
     if path and target.exists():
         return send_from_directory(str(frontend), path)
     return send_from_directory(str(frontend), "index.html")
-
 
 # ---------------------------------------------------------------------------
 # Main
