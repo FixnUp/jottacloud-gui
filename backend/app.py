@@ -12,8 +12,6 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
-import pexpect
-
 from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -395,6 +393,7 @@ def jotta_login():
         return jsonify({"error": "Token mangler"}), 400
 
     try:
+        import pexpect
         child = pexpect.spawn("jotta-cli login", encoding="utf-8", timeout=60)
         output_lines = []
 
