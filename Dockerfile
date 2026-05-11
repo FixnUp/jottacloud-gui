@@ -8,18 +8,14 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
-        gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Legg til Jottacloud apt-repo og installer jottacli
-RUN curl -fsSL https://repo.jotta.cloud/debian/Release.gpg \
-        | gpg --dearmor -o /usr/share/keyrings/jottacloud.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/jottacloud.gpg] https://repo.jotta.cloud/debian debian main" \
+# Legg til Jottacloud apt-repo og installer jotta-cli
+RUN echo "deb [trusted=yes] https://repo.jotta.cloud/debian debian main" \
         > /etc/apt/sources.list.d/jottacloud.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends jotta-cli \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/jotta-cli /usr/local/bin/jotta-cli
+    && rm -rf /var/lib/apt/lists/*
 
 # Python-avhengigheter
 WORKDIR /app
