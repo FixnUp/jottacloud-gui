@@ -25,6 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Kopier kildekode
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
 
 # Datamapper
 RUN mkdir -p /data /logs
@@ -40,10 +42,5 @@ ENV DATA_DIR=/data \
 
 EXPOSE 3600
 
-# Start med gunicorn (produksjon)
-CMD ["gunicorn", \
-     "--bind", "0.0.0.0:3600", \
-     "--workers", "2", \
-     "--timeout", "120", \
-     "--chdir", "/app/backend", \
-     "app:app"]
+# Start jottad + gunicorn via oppstartsskript
+CMD ["/start.sh"]
