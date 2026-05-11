@@ -358,6 +358,10 @@ def jotta_status():
 
 # ---------------------------------------------------------------------------
 # Jotta-CLI innlogging via pexpect (PTY-basert)
+# Prompts fra jotta-cli login:
+#   1. "accept license (yes/no):" -> svar "yes"
+#   2. "Personal login token:" (eller lignende) -> svar med token
+#   3. "Device name:" (eller lignende) -> svar med device_name
 # ---------------------------------------------------------------------------
 @app.route("/api/jotta/login", methods=["POST"])
 @login_required
@@ -376,42 +380,45 @@ def jotta_login():
 
     try:
         debug_log = open(str(LOG_DIR / "jotta_login_debug.log"), "a")
-        child = pexpect.spawn("jotta-cli login", encoding="utf-8", timeout=15)
+        child = pexpect.spawn("jotta-cli login", encoding="utf-8", timeout=20)
         child.logfile_read = debug_log
         output_lines = []
 
         while True:
             idx = child.expect([
-                r"[Tt]oken[:\s]+",
-                r"[Dd]evice.{0,20}[:\s]+",
-                r"[Ll]ogged in",
-                r"[Ss]uccess",
-                r"[Ee]rror",
-                r"[Ff]ailed",
-                pexpect.EOF,
-                pexpect.TIMEOUT,
-            ], timeout=15)
+                r"accept license \(yes/no\):",   # 0 - lisensavtale
+                r"[Tt]oken[:\s]+",               # 1 - token-prompt
+                r"[Dd]evice.{0,20}[:\s]+",       # 2 - enhetsnavn-prompt
+                r"[Ll]ogged in",                 # 3 - suksess
+                r"[Ss]uccess",                   # 4 - suksess
+                r"[Ee]rror",                     # 5 - feil
+                r"[Ff]ailed",                    # 6 - feil
+                pexpect.EOF,                     # 7 - ferdig
+                pexpect.TIMEOUT,                 # 8 - timeout
+            ], timeout=20)
 
             output_lines.append(child.before or "")
 
             if idx == 0:
-                child.sendline(token)
+                child.sendline("yes")
             elif idx == 1:
+                child.sendline(token)
+            elif idx == 2:
                 child.sendline(device_name)
-            elif idx in (2, 3):
+            elif idx in (3, 4):
                 output_lines.append(child.after or "")
                 child.expect(pexpect.EOF, timeout=10)
                 output_lines.append(child.before or "")
                 full_output = "\n".join(output_lines).strip()
                 append_log("success", "Logget inn pa Jottacloud")
                 return jsonify({"ok": True, "output": full_output})
-            elif idx in (4, 5):
+            elif idx in (5, 6):
                 output_lines.append(child.after or "")
                 child.expect(pexpect.EOF, timeout=10)
                 full_output = "\n".join(output_lines).strip()
                 append_log("error", "Jottacloud innlogging feilet: " + full_output)
                 return jsonify({"error": full_output or "Innlogging feilet"}), 400
-            elif idx == 6:
+            elif idx == 7:
                 full_output = "\n".join(output_lines).strip()
                 child.close()
                 if child.exitstatus == 0:
