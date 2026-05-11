@@ -232,13 +232,26 @@
         </div>
         <div class="card">
           <div class="card-header">
-            <div class="card-title"><i class="ti ti-cloud"></i> Jottacloud CLI-status</div>
+            <div class="card-title"><i class="ti ti-cloud"></i> Jottacloud-konto</div>
           </div>
           <div class="card-body settings-body">
             <div id="jotta-cli-status">Sjekker...</div>
-            <button class="btn btn-ghost btn-sm mt-1" id="check-jotta-btn">
-              <i class="ti ti-refresh"></i> Sjekk tilkobling
-            </button>
+            <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-sm" id="check-jotta-btn">
+                <i class="ti ti-refresh"></i> Sjekk status
+              </button>
+              <button class="btn btn-primary btn-sm" id="jotta-login-btn">
+                <i class="ti ti-login"></i> Logg inn på Jottacloud
+              </button>
+              <button class="btn btn-ghost btn-sm" id="jotta-logout-btn">
+                <i class="ti ti-logout"></i> Logg ut
+              </button>
+            </div>
+            <p class="settings-info" style="margin-top:12px;">
+              For å logge inn trenger du et personlig token fra Jottacloud.<br/>
+              Gå til <a href="https://www.jottacloud.com/web/secure" target="_blank">jottacloud.com → Konto → Sikkerhet</a>
+              og generer et nytt innloggingstoken.
+            </p>
           </div>
         </div>
         <div class="card">
@@ -264,6 +277,43 @@
     </section>
 
   </main>
+</div>
+
+<!-- ===== MODAL: JOTTACLOUD INNLOGGING ===== -->
+<div id="jotta-login-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Logg inn på Jottacloud</h3>
+      <button class="icon-btn" id="jotta-modal-close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:16px;">
+        Følg disse stegene for å logge inn:
+      </p>
+      <ol style="font-size:13px; color:var(--color-text-muted); line-height:2; padding-left:18px; margin-bottom:16px;">
+        <li>Gå til <a href="https://www.jottacloud.com/web/secure" target="_blank" style="color:var(--color-info)">jottacloud.com → Konto → Sikkerhet</a></li>
+        <li>Klikk <strong>«Generer personlig innloggingstoken»</strong></li>
+        <li>Kopier tokenet og lim det inn nedenfor</li>
+      </ol>
+      <div class="form-group">
+        <label for="jotta-token">Personlig innloggingstoken <span class="required">*</span></label>
+        <input type="password" id="jotta-token" placeholder="Lim inn token her" />
+      </div>
+      <div class="form-group">
+        <label for="jotta-device-name">Enhetsnavn</label>
+        <input type="text" id="jotta-device-name" value="JottaBackup-TrueNAS" />
+        <span class="form-hint">Vises i Jottacloud under tilkoblede enheter</span>
+      </div>
+      <div id="jotta-login-error" class="alert alert-error hidden"></div>
+      <div id="jotta-login-success" class="alert" style="background:var(--color-primary-lt);color:var(--color-primary-dk);border:0.5px solid var(--color-primary); display:none; padding:10px 12px; border-radius:var(--radius-sm); font-size:13px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="jotta-modal-cancel">Avbryt</button>
+      <button class="btn btn-primary" id="jotta-modal-save">
+        <i class="ti ti-login"></i> Logg inn
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- ===== MODAL: NY/REDIGER JOBB ===== -->

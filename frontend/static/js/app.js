@@ -422,6 +422,78 @@ async function checkJottaStatus() {
 document.getElementById("check-jotta-btn").addEventListener("click", checkJottaStatus);
 
 // ---------------------------------------------------------------------------
+// Jottacloud innloggingsmodal
+// ---------------------------------------------------------------------------
+
+function openJottaLoginModal() {
+  document.getElementById("jotta-token").value = "";
+  document.getElementById("jotta-login-error").classList.add("hidden");
+  document.getElementById("jotta-login-success").style.display = "none";
+  document.getElementById("jotta-login-modal").classList.remove("hidden");
+  document.getElementById("jotta-token").focus();
+}
+
+function closeJottaLoginModal() {
+  document.getElementById("jotta-login-modal").classList.add("hidden");
+}
+
+document.getElementById("jotta-login-btn").addEventListener("click", openJottaLoginModal);
+document.getElementById("jotta-modal-close").addEventListener("click", closeJottaLoginModal);
+document.getElementById("jotta-modal-cancel").addEventListener("click", closeJottaLoginModal);
+document.getElementById("jotta-login-modal").addEventListener("click", (e) => {
+  if (e.target === document.getElementById("jotta-login-modal")) closeJottaLoginModal();
+});
+
+document.getElementById("jotta-modal-save").addEventListener("click", async () => {
+  const token = document.getElementById("jotta-token").value.trim();
+  const deviceName = document.getElementById("jotta-device-name").value.trim();
+  const errEl = document.getElementById("jotta-login-error");
+  const successEl = document.getElementById("jotta-login-success");
+  const btn = document.getElementById("jotta-modal-save");
+
+  errEl.classList.add("hidden");
+  successEl.style.display = "none";
+
+  if (!token) {
+    errEl.textContent = "Du må lime inn et token.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader"></i> Logger inn...';
+
+  const res = await apiFetch("/api/jotta/login", {
+    method: "POST",
+    body: JSON.stringify({ token, device_name: deviceName }),
+  });
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-login"></i> Logg inn';
+
+  if (res && res.ok) {
+    successEl.textContent = "Innlogging vellykket! Jottacloud er nå tilkoblet.";
+    successEl.style.display = "block";
+    setTimeout(() => {
+      closeJottaLoginModal();
+      checkJottaStatus();
+    }, 2000);
+  } else if (res) {
+    const d = await res.json();
+    errEl.textContent = d.error || "Innlogging feilet. Prøv med et nytt token.";
+    errEl.classList.remove("hidden");
+  }
+});
+
+document.getElementById("jotta-logout-btn").addEventListener("click", async () => {
+  if (!confirm("Er du sikker på at du vil logge ut av Jottacloud?")) return;
+  const res = await apiFetch("/api/jotta/logout", { method: "POST" });
+  if (res && res.ok) {
+    checkJottaStatus();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Auto-polling (oppdater hvert 15. sekund)
 // ---------------------------------------------------------------------------
 

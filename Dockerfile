@@ -1,28 +1,21 @@
 # =====================================================================
 # JottaBackup GUI – Dockerfile
-# Basert på Python 3.12 slim + jottacloud-cli
-# Støtter linux/amd64 og linux/arm64 (via TARGETARCH)
+# Basert på Python 3.12 slim + jottacloud-cli via offisiell apt-repo
 # =====================================================================
 FROM python:3.12-slim
-
-# Bygg-argument for arkitektur (settes automatisk av buildx)
-ARG TARGETARCH=amd64
 
 # Installasjon av systemavhengigheter
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
-        bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer jottacloud-cli fra offisiell Jottacloud-distribusjon
-# Offisiell URL: https://www.jottacloud.com/jottacli/latest/linux/<arch>
-# Ref: https://docs.jottacloud.com/en/articles/1529501-jottacloud-cli-getting-started
-RUN ARCH="${TARGETARCH}" && \
-    curl -fsSL "https://www.jottacloud.com/jottacli/latest/linux/${ARCH}" \
-        -o /usr/local/bin/jotta-cli \
-    && chmod +x /usr/local/bin/jotta-cli \
-    && jotta-cli version || echo "jotta-cli installert (versjon ikke verifisert i byggemiljø)"
+# Legg til Jottacloud apt-repo og installer jotta-cli
+RUN echo "deb [trusted=yes] https://repo.jotta.cloud/debian debian main" \
+        > /etc/apt/sources.list.d/jottacloud.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends jotta-cli \
+    && rm -rf /var/lib/apt/lists/*
 
 # Python-avhengigheter
 WORKDIR /app
@@ -32,6 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Kopier kildekode
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
 
 # Datamapper
 RUN mkdir -p /data /logs
@@ -42,14 +37,10 @@ ENV DATA_DIR=/data \
     PORT=3600 \
     TZ=Europe/Oslo \
     APP_PASSWORD=jotta123 \
-    SECRET_KEY=change-me-please
+    SECRET_KEY=change-me-please \
+    XDG_CONFIG_HOME=/data
 
 EXPOSE 3600
 
-# Start med gunicorn (produksjon)
-CMD ["gunicorn", \
-     "--bind", "0.0.0.0:3600", \
-     "--workers", "2", \
-     "--timeout", "120", \
-     "--chdir", "/app/backend", \
-     "app:app"]
+# Start jottad + gunicorn via oppstartsskript
+CMD ["/start.sh"]

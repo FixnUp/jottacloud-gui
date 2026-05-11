@@ -409,6 +409,55 @@ def jotta_status():
     return jsonify({"connected": connected, "output": output})
 
 # ---------------------------------------------------------------------------
+# Jotta-CLI innlogging via personlig token
+# ---------------------------------------------------------------------------
+
+@app.route("/api/jotta/login", methods=["POST"])
+@login_required
+def jotta_login():
+    data = request.get_json(force=True)
+    token = data.get("token", "").strip()
+    device_name = data.get("device_name", "JottaBackup-TrueNAS").strip()
+
+    if not token:
+        return jsonify({"error": "Token mangler"}), 400
+
+    try:
+        # Send token + enhetsnavn til jotta-cli login via stdin
+        login_input = f"{token}\n{device_name}\n"
+        result = subprocess.run(
+            ["jotta-cli", "login"],
+            input=login_input,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        output = result.stdout + result.stderr
+        if result.returncode == 0:
+            append_log("success", "Logget inn på Jottacloud")
+            return jsonify({"ok": True, "output": output})
+        else:
+            append_log("error", f"Jottacloud innlogging feilet: {output}")
+            return jsonify({"error": output or "Innlogging feilet"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/jotta/logout", methods=["POST"])
+@login_required
+def jotta_logout():
+    try:
+        result = subprocess.run(
+            ["jotta-cli", "logout"],
+            capture_output=True, text=True, timeout=10
+        )
+        output = result.stdout + result.stderr
+        append_log("info", "Logget ut av Jottacloud")
+        return jsonify({"ok": True, "output": output})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ---------------------------------------------------------------------------
 # Frontend-serving
 # ---------------------------------------------------------------------------
 
