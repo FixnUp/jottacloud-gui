@@ -3,3 +3,4 @@ flask-cors==4.0.1
 apscheduler==3.10.4
 gunicorn==22.0.0
 pytz==2024.1
+pexpect==4.9.0
