@@ -1,0 +1,76 @@
+# =====================================================================
+# JottaBackup – TrueNAS Scale Custom App konfigurasjon
+#
+# Slik bruker du denne filen:
+#   Apps → Custom App → gi appen navn "jottabackup" → Edit YAML
+#   Lim inn innholdet nedenfor og juster verdiene merket med ENDRE
+# =====================================================================
+
+image:
+  repository: ghcr.io/DITT_GITHUB_BRUKERNAVN/jottacloud-gui  # <-- ENDRE
+  tag: latest
+  pullPolicy: Always    # Hent alltid nyeste image fra ghcr.io
+
+service:
+  main:
+    enabled: true
+    type: NodePort
+    ports:
+      main:
+        port: 3600
+        targetPort: 3600
+        nodePort: 3600
+        protocol: HTTP
+
+workload:
+  main:
+    type: Deployment
+    replicas: 1
+    podSpec:
+      containers:
+        main:
+          image:
+            repository: ghcr.io/DITT_GITHUB_BRUKERNAVN/jottacloud-gui  # <-- ENDRE
+            tag: latest
+          env:
+            # ---- SIKKERHET – ENDRE DISSE ----
+            APP_PASSWORD: "dittPassordHer"
+            SECRET_KEY: "enLangTilfeldigStreng123"
+            # ---- TIDSSONE ----
+            TZ: "Europe/Oslo"
+            # ---- INTERNE STIER (ikke endre) ----
+            DATA_DIR: "/data"
+            LOG_DIR:  "/logs"
+            PORT:     "3600"
+          ports:
+            - containerPort: 3600
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: logs
+              mountPath: /logs
+            # Legg til mount per mappe som skal sikkerhetskopieres:
+            # - name: tank-dokumenter
+            #   mountPath: /mnt/tank/dokumenter
+
+persistence:
+  data:
+    enabled: true
+    type: hostPath
+    # ENDRE: bruk ditt faktiske pool-navn (typisk "tank" eller "data")
+    hostPath: /mnt/tank/apps/jottabackup/data
+    mountPath: /data
+
+  logs:
+    enabled: true
+    type: hostPath
+    hostPath: /mnt/tank/apps/jottabackup/logs
+    mountPath: /logs
+
+  # Legg til en blokk per mappe du vil ta backup av, f.eks.:
+  # tank-dokumenter:
+  #   enabled: true
+  #   type: hostPath
+  #   hostPath: /mnt/tank/dokumenter
+  #   mountPath: /mnt/tank/dokumenter
+  #   readOnly: true

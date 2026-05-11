@@ -1,0 +1,11 @@
+app_version: 1
+name: jottabackup
+title: JottaBackup
+description: Web GUI for Jottacloud CLI backup management on TrueNAS Scale
+version: "1.0.0"
+home: http://localhost:3600
+sources:
+  - https://github.com/jotta/jottacloud-cli
+run_as_context: false
+capabilities: []
+host_mounts: []

@@ -1,0 +1,52 @@
+version: "3.8"
+
+# =====================================================================
+# JottaBackup – docker-compose
+# Image hentes automatisk fra GitHub Container Registry (ghcr.io)
+# Bytt ut DITT_GITHUB_BRUKERNAVN med ditt faktiske GitHub-brukernavn
+# =====================================================================
+
+services:
+  jottabackup:
+    image: ghcr.io/DITT_GITHUB_BRUKERNAVN/jottacloud-gui:latest
+    container_name: jottabackup
+    restart: unless-stopped
+    pull_policy: always          # Hent alltid nyeste image ved oppstart
+    ports:
+      - "3600:3600"
+    environment:
+      # ---- SIKKERHET (ENDRE DISSE!) ----
+      APP_PASSWORD: "dittPassordHer"
+      SECRET_KEY: "enLangTilfeldigHemmeligNøkkel"
+
+      # ---- TIDSSONE ----
+      TZ: "Europe/Oslo"
+
+      # ---- STIER (ikke endre) ----
+      DATA_DIR: /data
+      LOG_DIR:  /logs
+      PORT:     "3600"
+
+    volumes:
+      # Persistent lagring – jobbdefinisjoner og Jotta-innloggingstoken
+      - jottabackup_data:/data
+      # Logger
+      - jottabackup_logs:/logs
+
+      # Bind-mount av TrueNAS-datasett som skal sikkerhetskopieres.
+      # Legg til en linje per mappe du ønsker å ta backup av:
+      # - /mnt/tank/dokumenter:/mnt/tank/dokumenter:ro
+      # - /mnt/tank/bilder:/mnt/tank/bilder:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3600/api/auth/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  jottabackup_data:
+    driver: local
+  jottabackup_logs:
+    driver: local

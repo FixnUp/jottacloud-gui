@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JottaBackup – TrueNAS</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" />
+</head>
+<body>
+
+<!-- ===== INNLOGGING ===== -->
+<div id="login-screen" class="login-screen hidden">
+  <div class="login-card">
+    <div class="login-logo">
+      <i class="ti ti-cloud-upload"></i>
+    </div>
+    <h1>JottaBackup</h1>
+    <p class="login-sub">TrueNAS Scale – Backup-administrasjon</p>
+    <form id="login-form">
+      <div class="form-group">
+        <label for="password">Passord</label>
+        <input type="password" id="password" placeholder="Skriv inn passord" autofocus required />
+      </div>
+      <div id="login-error" class="alert alert-error hidden">Feil passord. Prøv igjen.</div>
+      <button type="submit" class="btn btn-primary btn-full">
+        <i class="ti ti-lock-open"></i> Logg inn
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== HOVED-APP ===== -->
+<div id="app" class="app-layout hidden">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon"><i class="ti ti-cloud-upload"></i></div>
+      <div>
+        <div class="sidebar-logo-text">JottaBackup</div>
+        <div class="sidebar-logo-sub">TrueNAS Scale</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-page="dashboard">
+        <i class="ti ti-layout-dashboard"></i> Dashboard
+      </a>
+      <a href="#" class="nav-item" data-page="jobs">
+        <i class="ti ti-clock"></i> Backup-jobber
+      </a>
+      <a href="#" class="nav-item" data-page="logs">
+        <i class="ti ti-file-text"></i> Logger
+      </a>
+      <a href="#" class="nav-item" data-page="settings">
+        <i class="ti ti-settings"></i> Innstillinger
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="jotta-status">
+        <span id="jotta-dot" class="status-dot status-dot--gray"></span>
+        <span id="jotta-status-text">Sjekker...</span>
+      </div>
+      <div class="sidebar-version">jottacloud-cli</div>
+      <button class="btn btn-ghost btn-sm" id="logout-btn">
+        <i class="ti ti-logout"></i> Logg ut
+      </button>
+    </div>
+  </aside>
+
+  <!-- Hovedinnhold -->
+  <main class="main-content">
+
+    <!-- ===== DASHBOARD ===== -->
+    <section id="page-dashboard" class="page active">
+      <div class="page-header">
+        <h2>Dashboard</h2>
+        <button class="btn btn-primary" id="new-job-btn">
+          <i class="ti ti-plus"></i> Ny backup-jobb
+        </button>
+      </div>
+
+      <!-- Metrikk-kort -->
+      <div class="metric-grid" id="metric-grid">
+        <div class="metric-card">
+          <div class="metric-label"><i class="ti ti-clock"></i> Siste backup</div>
+          <div class="metric-value" id="stat-last-backup">–</div>
+          <div class="metric-sub" id="stat-last-backup-sub">Ingen data</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label"><i class="ti ti-briefcase"></i> Totale jobber</div>
+          <div class="metric-value" id="stat-total-jobs">0</div>
+          <div class="metric-sub" id="stat-running">0 kjører nå</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label"><i class="ti ti-check"></i> Vellykkede</div>
+          <div class="metric-value" id="stat-successful">0</div>
+          <div class="metric-sub" id="stat-errors-sub">0 feil</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label"><i class="ti ti-refresh"></i> Status</div>
+          <div class="metric-value" id="stat-status">–</div>
+          <div class="metric-sub">Oppdateres automatisk</div>
+        </div>
+      </div>
+
+      <!-- Jobb-tabell -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-clock"></i> Backup-jobber</div>
+          <span class="badge badge-info" id="job-count-badge">0 jobber</span>
+        </div>
+        <div class="card-body">
+          <table class="table" id="jobs-table">
+            <thead>
+              <tr>
+                <th>Navn</th>
+                <th>Kildemappe</th>
+                <th>Kjøretid</th>
+                <th>Status</th>
+                <th>Fremgang</th>
+                <th>Sist kjørt</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="jobs-tbody">
+              <tr id="jobs-empty-row">
+                <td colspan="7" class="empty-state">
+                  <i class="ti ti-database-off"></i>
+                  <span>Ingen backup-jobber enda. Klikk «Ny backup-jobb» for å starte.</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Logger-kortvisning -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-file-text"></i> Siste hendelser</div>
+          <a href="#" class="btn btn-ghost btn-sm" data-page="logs">Se alle</a>
+        </div>
+        <div class="card-body" id="recent-logs-body">
+          <div class="log-empty">Ingen hendelser</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== BACKUP-JOBBER ===== -->
+    <section id="page-jobs" class="page">
+      <div class="page-header">
+        <h2>Backup-jobber</h2>
+        <button class="btn btn-primary" id="new-job-btn2">
+          <i class="ti ti-plus"></i> Ny backup-jobb
+        </button>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Navn</th>
+                <th>Kildemappe</th>
+                <th>Destinasjon (Jotta)</th>
+                <th>Cron-plan</th>
+                <th>Status</th>
+                <th>Sist kjørt</th>
+                <th>Aktivert</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="jobs-full-tbody">
+              <tr>
+                <td colspan="8" class="empty-state">
+                  <i class="ti ti-database-off"></i>
+                  <span>Ingen jobber</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== LOGGER ===== -->
+    <section id="page-logs" class="page">
+      <div class="page-header">
+        <h2>Logger</h2>
+        <div class="header-actions">
+          <select id="log-filter" class="select-sm">
+            <option value="">Alle nivåer</option>
+            <option value="info">Info</option>
+            <option value="success">Vellykket</option>
+            <option value="warning">Advarsel</option>
+            <option value="error">Feil</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="refresh-logs-btn">
+            <i class="ti ti-refresh"></i> Oppdater
+          </button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body" id="logs-body">
+          <div class="log-empty">Laster logger...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== INNSTILLINGER ===== -->
+    <section id="page-settings" class="page">
+      <div class="page-header">
+        <h2>Innstillinger</h2>
+      </div>
+      <div class="settings-grid">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><i class="ti ti-lock"></i> Sikkerhet</div>
+          </div>
+          <div class="card-body settings-body">
+            <p class="settings-info">
+              Passord og hemmelig nøkkel settes som miljøvariabler i Docker-konfigurasjonen
+              (<code>APP_PASSWORD</code>, <code>SECRET_KEY</code>).
+            </p>
+            <div class="settings-row">
+              <span class="settings-label">Gjeldende passord-status</span>
+              <span class="badge badge-success"><i class="ti ti-check"></i> Satt via miljøvariabel</span>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><i class="ti ti-cloud"></i> Jottacloud CLI-status</div>
+          </div>
+          <div class="card-body settings-body">
+            <div id="jotta-cli-status">Sjekker...</div>
+            <button class="btn btn-ghost btn-sm mt-1" id="check-jotta-btn">
+              <i class="ti ti-refresh"></i> Sjekk tilkobling
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title"><i class="ti ti-info-circle"></i> Om appen</div>
+          </div>
+          <div class="card-body settings-body">
+            <div class="settings-row">
+              <span class="settings-label">Versjon</span>
+              <span>1.0.0</span>
+            </div>
+            <div class="settings-row">
+              <span class="settings-label">Port</span>
+              <span>3600</span>
+            </div>
+            <div class="settings-row">
+              <span class="settings-label">Tidssone</span>
+              <span id="tz-display">Europe/Oslo</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ===== MODAL: NY/REDIGER JOBB ===== -->
+<div id="job-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Ny backup-jobb</h3>
+      <button class="icon-btn" id="modal-close"><i class="ti ti-x"></i></button>
+    </div>
+    <form id="job-form" class="modal-body">
+      <input type="hidden" id="job-id" />
+      <div class="form-group">
+        <label for="job-name">Jobbens navn <span class="required">*</span></label>
+        <input type="text" id="job-name" placeholder="f.eks. Dokumenter" required />
+      </div>
+      <div class="form-group">
+        <label for="job-source">Kildemappe (på serveren) <span class="required">*</span></label>
+        <input type="text" id="job-source" placeholder="/mnt/data/dokumenter" required />
+      </div>
+      <div class="form-group">
+        <label for="job-dest">Destinasjon på Jottacloud</label>
+        <input type="text" id="job-dest" placeholder="Jotta/Arkiv/Dokumenter" />
+        <span class="form-hint">La stå tom for automatisk navn</span>
+      </div>
+      <div class="form-group">
+        <label for="job-schedule">Cron-plan <span class="required">*</span></label>
+        <input type="text" id="job-schedule" placeholder="0 3 * * *" required />
+        <span class="form-hint">
+          Format: minutt time dag måned ukedag &nbsp;·&nbsp;
+          <a href="https://crontab.guru" target="_blank">crontab.guru</a><br/>
+          Eksempler: <code>0 3 * * *</code> = daglig kl 03:00 &nbsp;·&nbsp;
+          <code>0 2 * * 0</code> = ukentlig søndag kl 02:00
+        </span>
+      </div>
+      <div class="form-group form-toggle">
+        <label for="job-enabled">Aktivert</label>
+        <label class="toggle">
+          <input type="checkbox" id="job-enabled" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div id="job-form-error" class="alert alert-error hidden"></div>
+    </form>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="modal-cancel">Avbryt</button>
+      <button class="btn btn-primary" id="modal-save">
+        <i class="ti ti-device-floppy"></i> Lagre jobb
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: BEKREFT SLETTING ===== -->
+<div id="confirm-modal" class="modal-backdrop hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>Bekreft sletting</h3>
+      <button class="icon-btn" id="confirm-close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-message">Er du sikker på at du vil slette denne jobben?</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="confirm-cancel">Avbryt</button>
+      <button class="btn btn-danger" id="confirm-ok">Slett</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
