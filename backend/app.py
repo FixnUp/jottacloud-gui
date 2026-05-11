@@ -12,6 +12,8 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
+import pexpect
+
 from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -393,53 +395,44 @@ def jotta_login():
         return jsonify({"error": "Token mangler"}), 400
 
     try:
-        login_input = f"{token}\n{device_name}\n"
-        result = subprocess.run(
-            ["jotta-cli", "login"],
-            input=login_input,
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        output = result.stdout + result.stderr
-        if result.returncode == 0:
-            append_log("success", "Logget inn på Jottacloud")
-            return jsonify({"ok": True, "output": output})
-        else:
-            append_log("error", f"Jottacloud innlogging feilet: {output}")
-            return jsonify({"error": output or "Innlogging feilet"}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        child = pexpect.spawn("jotta-cli login", encoding="utf-8", timeout=60)
+        output_lines = []
 
-@app.route("/api/jotta/logout", methods=["POST"])
-@login_required
-def jotta_logout():
-    try:
-        result = subprocess.run(
-            ["jotta-cli", "logout"],
-            capture_output=True, text=True, timeout=10
-        )
-        output = result.stdout + result.stderr
-        append_log("info", "Logget ut av Jottacloud")
-        return jsonify({"ok": True, "output": output})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Samle all output og svar på prompts
+        while True:
+            idx = child.expect([
+                r"[Tt]oken[:\s]+",          # "Personal login token:" el. lign.
+                r"[Dd]evice.{0,20}[:\s]+",  # "Device name:" el. lign.
+                r"[Ll]ogged in",             # Suksessmelding
+                r"[Ss]uccess",
+                r"[Ee]rror",
+                r"[Ff]ailed",
+                pexpect.EOF,
+                pexpect.TIMEOUT,
+            ], timeout=60)
 
-# ---------------------------------------------------------------------------
-# Frontend-serving
-# ---------------------------------------------------------------------------
-@app.route("/", defaults={"path": ""})
-@app.route("/<path:path>")
-def serve_frontend(path):
-    frontend = Path(app.static_folder)
-    target = frontend / path
-    if path and target.exists():
-        return send_from_directory(str(frontend), path)
-    return send_from_directory(str(frontend), "index.html")
+            output_lines.append(child.before or "")
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 3600))
-    app.run(host="0.0.0.0", port=port, debug=False)
+            if idx == 0:  # Token-prompt
+                child.sendline(token)
+            elif idx == 1:  # Device name-prompt
+                child.sendline(device_name)
+            elif idx in (2, 3):  # Suksess
+                output_lines.append(child.after or "")
+                child.expect(pexpect.EOF, timeout=10)
+                output_lines.append(child.before or "")
+                full_output = "\n".join(output_lines).strip()
+                append_log("success", "Logget inn på Jottacloud")
+                return jsonify({"ok": True, "output": full_output})
+            elif idx in (4, 5):  # Feil
+                output_lines.append(child.after or "")
+                child.expect(pexpect.EOF, timeout=10)
+                full_output = "\n".join(output_lines).strip()
+                append_log("error", f"Jottacloud innlogging feilet: {full_output}")
+                return jsonify({"error": full_output or "Innlogging feilet"}), 400
+            elif idx == 6:  # EOF – kommandoen er ferdig
+                full_output = "\n".join(output_lines).strip()
+                # Sjekk exit-kode
+                child.close()
+                if child.exitstatus == 0:
+                    append_log("success", "Logget inn på Jottac
