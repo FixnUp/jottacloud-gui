@@ -1,28 +1,25 @@
 # =====================================================================
 # JottaBackup GUI – Dockerfile
-# Basert på Python 3.12 slim + jottacloud-cli
-# Støtter linux/amd64 og linux/arm64 (via TARGETARCH)
+# Basert på Python 3.12 slim + jottacloud-cli via offisiell apt-repo
 # =====================================================================
 FROM python:3.12-slim
-
-# Bygg-argument for arkitektur (settes automatisk av buildx)
-ARG TARGETARCH=amd64
 
 # Installasjon av systemavhengigheter
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
-        bash \
+        gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer jottacloud-cli fra offisiell Jottacloud-distribusjon
-# Offisiell URL: https://www.jottacloud.com/jottacli/latest/linux/<arch>
-# Ref: https://docs.jottacloud.com/en/articles/1529501-jottacloud-cli-getting-started
-RUN ARCH="${TARGETARCH}" && \
-    curl -fsSL "https://www.jottacloud.com/jottacli/latest/linux/${ARCH}" \
-        -o /usr/local/bin/jotta-cli \
-    && chmod +x /usr/local/bin/jotta-cli \
-    && jotta-cli version || echo "jotta-cli installert (versjon ikke verifisert i byggemiljø)"
+# Legg til Jottacloud apt-repo og installer jottacli
+RUN curl -fsSL https://repo.jotta.cloud/debian/Release.gpg \
+        | gpg --dearmor -o /usr/share/keyrings/jottacloud.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/jottacloud.gpg] https://repo.jotta.cloud/debian debian main" \
+        > /etc/apt/sources.list.d/jottacloud.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends jotta-cli \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/jotta-cli /usr/local/bin/jotta-cli
 
 # Python-avhengigheter
 WORKDIR /app
@@ -42,7 +39,8 @@ ENV DATA_DIR=/data \
     PORT=3600 \
     TZ=Europe/Oslo \
     APP_PASSWORD=jotta123 \
-    SECRET_KEY=change-me-please
+    SECRET_KEY=change-me-please \
+    XDG_CONFIG_HOME=/data
 
 EXPOSE 3600
 
