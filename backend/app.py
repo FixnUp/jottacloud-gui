@@ -1,6 +1,6 @@
 """
 JottaCloud Backup GUI - Backend API
-Flask-basert API for administrasjon av Jottacloud CLI-backups pa TrueNAS Scale.
+Flask-basert API for administrasjon av Jottacloud CLI-backups på TrueNAS Scale.
 """
 
 import os
@@ -8,9 +8,12 @@ import json
 import subprocess
 import threading
 import uuid
+import time
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
+
+import pexpect
 
 from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
@@ -43,7 +46,7 @@ scheduler = BackgroundScheduler(timezone=TZ)
 scheduler.start()
 
 # ---------------------------------------------------------------------------
-# Hjelpefunksjoner - jobber
+# Hjelpefunksjoner – jobber
 # ---------------------------------------------------------------------------
 def load_jobs():
     if JOBS_FILE.exists():
@@ -68,7 +71,7 @@ def update_job_field(job_id, **kwargs):
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-def append_log(level, message, job_id=None):
+def append_log(level: str, message: str, job_id: str = None):
     entry = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "level": level,
@@ -91,11 +94,11 @@ def read_logs(limit=200):
     return list(reversed(entries[-limit:]))
 
 # ---------------------------------------------------------------------------
-# Backup-kjoring
+# Backup-kjøring
 # ---------------------------------------------------------------------------
 running_jobs = {}
 
-def run_backup(job_id):
+def run_backup(job_id: str):
     job = get_job(job_id)
     if not job:
         return
@@ -103,14 +106,26 @@ def run_backup(job_id):
     started = datetime.now().isoformat(timespec="seconds")
     running_jobs[job_id] = {"progress": 0, "started": started}
     update_job_field(job_id, status="running", last_run=started, progress=0)
-    append_log("info", "Backup startet: " + job["name"] + " (" + job["source_path"] + ")", job_id)
+    append_log("info", f"Backup startet: {job['name']} ({job['source_path']})", job_id)
 
     env = os.environ.copy()
+
     dest = job.get("dest_path") or job["name"]
-    cmd = ["jotta-cli", "archive", job["source_path"], "--remote=" + dest, "--nogui"]
+    cmd = [
+        "jotta-cli", "archive",
+        job["source_path"],
+        f"--remote={dest}",
+        "--nogui",
+    ]
 
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+        )
         output_lines = []
         for line in proc.stdout:
             line = line.rstrip()
@@ -128,32 +143,34 @@ def run_backup(job_id):
 
         if proc.returncode == 0:
             update_job_field(job_id, status="success", progress=100,
-                             last_run=started, last_success=finished, last_error=None)
-            append_log("success", "Backup fullfort: " + job["name"], job_id)
+                             last_run=started, last_success=finished,
+                             last_error=None)
+            append_log("success", f"Backup fullført: {job['name']}", job_id)
         else:
             err = "\n".join(output_lines[-5:])
-            update_job_field(job_id, status="error", progress=0, last_run=started, last_error=err)
-            append_log("error", "Backup feilet: " + job["name"] + " - " + err, job_id)
+            update_job_field(job_id, status="error", progress=0,
+                             last_run=started, last_error=err)
+            append_log("error", f"Backup feilet: {job['name']} — {err}", job_id)
 
     except FileNotFoundError:
         msg = "jotta-cli ikke funnet. Sjekk installasjonen."
         update_job_field(job_id, status="error", progress=0, last_error=msg)
-        append_log("error", job["name"] + ": " + msg, job_id)
+        append_log("error", f"{job['name']}: {msg}", job_id)
     except Exception as e:
         update_job_field(job_id, status="error", progress=0, last_error=str(e))
-        append_log("error", "Uventet feil for " + job["name"] + ": " + str(e), job_id)
+        append_log("error", f"Uventet feil for {job['name']}: {e}", job_id)
     finally:
         running_jobs.pop(job_id, None)
 
 
-def run_backup_async(job_id):
+def run_backup_async(job_id: str):
     t = threading.Thread(target=run_backup, args=(job_id,), daemon=True)
     running_jobs.setdefault(job_id, {})["thread"] = t
     t.start()
 
 
-def register_job_schedule(job):
-    sched_id = "backup_" + job["id"]
+def register_job_schedule(job: dict):
+    sched_id = f"backup_{job['id']}"
     if scheduler.get_job(sched_id):
         scheduler.remove_job(sched_id)
     if not job.get("enabled", True):
@@ -165,11 +182,18 @@ def register_job_schedule(job):
     if len(parts) != 5:
         return
     minute, hour, dom, month, dow = parts
-    trigger = CronTrigger(minute=minute, hour=hour, day=dom,
-                          month=month, day_of_week=dow, timezone=TZ)
-    scheduler.add_job(run_backup_async, trigger=trigger, args=[job["id"]],
-                      id=sched_id, replace_existing=True)
-    append_log("info", "Planlagt: " + job["name"] + " - " + schedule)
+    trigger = CronTrigger(
+        minute=minute, hour=hour, day=dom,
+        month=month, day_of_week=dow, timezone=TZ
+    )
+    scheduler.add_job(
+        run_backup_async,
+        trigger=trigger,
+        args=[job["id"]],
+        id=sched_id,
+        replace_existing=True,
+    )
+    append_log("info", f"Planlagt: {job['name']} — {schedule}")
 
 def bootstrap_schedules():
     for job in load_jobs():
@@ -189,7 +213,7 @@ def login_required(f):
     return decorated
 
 # ---------------------------------------------------------------------------
-# API-endepunkter - Auth
+# API-endepunkter – Auth
 # ---------------------------------------------------------------------------
 @app.route("/api/login", methods=["POST"])
 def login():
@@ -209,7 +233,7 @@ def auth_status():
     return jsonify({"authenticated": bool(session.get("authenticated"))})
 
 # ---------------------------------------------------------------------------
-# API-endepunkter - Jobber
+# API-endepunkter – Jobber
 # ---------------------------------------------------------------------------
 @app.route("/api/jobs", methods=["GET"])
 @login_required
@@ -228,7 +252,7 @@ def create_job():
     required = ["name", "source_path", "schedule"]
     for field in required:
         if not data.get(field):
-            return jsonify({"error": "Mangler felt: " + field}), 400
+            return jsonify({"error": f"Mangler felt: {field}"}), 400
 
     job = {
         "id": str(uuid.uuid4()),
@@ -248,7 +272,7 @@ def create_job():
     jobs.append(job)
     save_jobs(jobs)
     register_job_schedule(job)
-    append_log("info", "Jobb opprettet: " + job["name"])
+    append_log("info", f"Jobb opprettet: {job['name']}")
     return jsonify(job), 201
 
 @app.route("/api/jobs/<job_id>", methods=["PUT"])
@@ -276,10 +300,10 @@ def delete_job(job_id):
     jobs = load_jobs()
     jobs = [j for j in jobs if j["id"] != job_id]
     save_jobs(jobs)
-    sched_id = "backup_" + job_id
+    sched_id = f"backup_{job_id}"
     if scheduler.get_job(sched_id):
         scheduler.remove_job(sched_id)
-    append_log("info", "Jobb slettet: " + job_id)
+    append_log("info", f"Jobb slettet: {job_id}")
     return jsonify({"ok": True})
 
 @app.route("/api/jobs/<job_id>/run", methods=["POST"])
@@ -289,20 +313,20 @@ def run_job_now(job_id):
     if not job:
         return jsonify({"error": "Jobb ikke funnet"}), 404
     if job_id in running_jobs:
-        return jsonify({"error": "Jobben kjorer allerede"}), 409
+        return jsonify({"error": "Jobben kjører allerede"}), 409
     run_backup_async(job_id)
-    return jsonify({"ok": True, "message": "Backup startet: " + job["name"]})
+    return jsonify({"ok": True, "message": f"Backup startet: {job['name']}"})
 
 @app.route("/api/jobs/<job_id>/stop", methods=["POST"])
 @login_required
 def stop_job(job_id):
     update_job_field(job_id, status="idle", progress=0)
     running_jobs.pop(job_id, None)
-    append_log("warning", "Jobb stoppet manuelt: " + job_id)
+    append_log("warning", f"Jobb stoppet manuelt: {job_id}")
     return jsonify({"ok": True})
 
 # ---------------------------------------------------------------------------
-# API-endepunkter - Status/dashboard
+# API-endepunkter – Status/dashboard
 # ---------------------------------------------------------------------------
 @app.route("/api/stats")
 @login_required
@@ -338,14 +362,24 @@ def get_logs():
     return jsonify(entries[:limit])
 
 # ---------------------------------------------------------------------------
-# Jotta-CLI status
+# Jotta-CLI status  (cache for å unngå HTTP 429 fra JottaCloud)
 # ---------------------------------------------------------------------------
+_jotta_status_cache = {"result": None, "ts": 0}
+_JOTTA_STATUS_TTL = 30  # sekunder
+
 @app.route("/api/jotta/status")
 @login_required
 def jotta_status():
+    now = time.monotonic()
+    cached = _jotta_status_cache
+    if cached["result"] is not None and (now - cached["ts"]) < _JOTTA_STATUS_TTL:
+        return jsonify(cached["result"])
+
     try:
-        result = subprocess.run(["jotta-cli", "status"],
-                                capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            ["jotta-cli", "status"],
+            capture_output=True, text=True, timeout=10
+        )
         connected = result.returncode == 0
         output = result.stdout or result.stderr
     except FileNotFoundError:
@@ -354,14 +388,14 @@ def jotta_status():
     except Exception as e:
         connected = False
         output = str(e)
-    return jsonify({"connected": connected, "output": output})
+
+    payload = {"connected": connected, "output": output}
+    _jotta_status_cache["result"] = payload
+    _jotta_status_cache["ts"] = now
+    return jsonify(payload)
 
 # ---------------------------------------------------------------------------
-# Jotta-CLI innlogging via pexpect (PTY-basert)
-# Prompts fra jotta-cli login:
-#   1. "accept license (yes/no):" -> svar "yes"
-#   2. "Personal login token:" (eller lignende) -> svar med token
-#   3. "Device name:" (eller lignende) -> svar med device_name
+# Jotta-CLI innlogging via personlig token
 # ---------------------------------------------------------------------------
 @app.route("/api/jotta/login", methods=["POST"])
 @login_required
@@ -374,99 +408,37 @@ def jotta_login():
         return jsonify({"error": "Token mangler"}), 400
 
     try:
-        import pexpect
-    except ImportError:
-        return jsonify({"error": "pexpect ikke installert - bygg nytt Docker-image"}), 500
-
-    try:
-        debug_log = open(str(LOG_DIR / "jotta_login_debug.log"), "a")
-        child = pexpect.spawn("jotta-cli login", encoding="utf-8", timeout=20)
-        child.logfile_read = debug_log
+        child = pexpect.spawn("jotta-cli login", encoding="utf-8", timeout=60)
         output_lines = []
 
+        # Samle all output og svar på prompts
         while True:
             idx = child.expect([
-                r"accept license \(yes/no\):",   # 0 - lisensavtale
-                r"[Tt]oken[:\s]+",               # 1 - token-prompt
-                r"[Dd]evice.{0,20}[:\s]+",       # 2 - enhetsnavn-prompt
-                r"[Ll]ogged in",                 # 3 - suksess
-                r"[Ss]uccess",                   # 4 - suksess
-                r"[Ee]rror",                     # 5 - feil
-                r"[Ff]ailed",                    # 6 - feil
-                pexpect.EOF,                     # 7 - ferdig
-                pexpect.TIMEOUT,                 # 8 - timeout
-            ], timeout=20)
+                r"[Tt]oken[:\s]+",          # "Personal login token:" el. lign.
+                r"[Dd]evice.{0,20}[:\s]+",  # "Device name:" el. lign.
+                r"[Ll]ogged in",             # Suksessmelding
+                r"[Ss]uccess",
+                r"[Ee]rror",
+                r"[Ff]ailed",
+                pexpect.EOF,
+                pexpect.TIMEOUT,
+            ], timeout=60)
 
             output_lines.append(child.before or "")
 
-            if idx == 0:
-                child.sendline("yes")
-            elif idx == 1:
+            if idx == 0:  # Token-prompt
                 child.sendline(token)
-            elif idx == 2:
+            elif idx == 1:  # Device name-prompt
                 child.sendline(device_name)
-            elif idx in (3, 4):
+            elif idx in (2, 3):  # Suksess
                 output_lines.append(child.after or "")
                 child.expect(pexpect.EOF, timeout=10)
                 output_lines.append(child.before or "")
                 full_output = "\n".join(output_lines).strip()
-                append_log("success", "Logget inn pa Jottacloud")
+                append_log("success", "Logget inn på Jottacloud")
+                _jotta_status_cache["result"] = None  # tøm cache etter login
                 return jsonify({"ok": True, "output": full_output})
-            elif idx in (5, 6):
+            elif idx in (4, 5):  # Feil
                 output_lines.append(child.after or "")
                 child.expect(pexpect.EOF, timeout=10)
-                full_output = "\n".join(output_lines).strip()
-                append_log("error", "Jottacloud innlogging feilet: " + full_output)
-                return jsonify({"error": full_output or "Innlogging feilet"}), 400
-            elif idx == 7:
-                full_output = "\n".join(output_lines).strip()
-                child.close()
-                if child.exitstatus == 0:
-                    append_log("success", "Logget inn pa Jottacloud")
-                    return jsonify({"ok": True, "output": full_output})
-                else:
-                    append_log("error", "Jottacloud innlogging feilet: " + full_output)
-                    return jsonify({"error": full_output or "Innlogging feilet"}), 400
-            else:
-                collected = "\n".join(output_lines).strip()
-                child.close(force=True)
-                append_log("error", "jotta-cli login timeout. Output: " + repr(collected))
-                return jsonify({
-                    "error": "Tidsavbrudd",
-                    "debug": collected or "(ingen output fra jotta-cli)"
-                }), 504
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/jotta/logout", methods=["POST"])
-@login_required
-def jotta_logout():
-    try:
-        result = subprocess.run(["jotta-cli", "logout"],
-                                capture_output=True, text=True, timeout=10)
-        output = result.stdout + result.stderr
-        append_log("info", "Logget ut av Jottacloud")
-        return jsonify({"ok": True, "output": output})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# ---------------------------------------------------------------------------
-# Frontend-serving
-# ---------------------------------------------------------------------------
-@app.route("/", defaults={"path": ""})
-@app.route("/<path:path>")
-def serve_frontend(path):
-    frontend = Path(app.static_folder)
-    target = frontend / path
-    if path and target.exists():
-        return send_from_directory(str(frontend), path)
-    return send_from_directory(str(frontend), "index.html")
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 3600))
-    app.run(host="0.0.0.0", port=port, debug=False)
+           

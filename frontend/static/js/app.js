@@ -8,7 +8,7 @@ const API = "";  // Samme opprinnelse
 // Hjelpefunksjoner
 // ---------------------------------------------------------------------------
 
-async function apiFetch(path, opts = {}) {
+async function apiFetch(path, opts = {}, _retries = 2) {
   const res = await fetch(API + path, {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
@@ -17,6 +17,11 @@ async function apiFetch(path, opts = {}) {
   if (res.status === 401) {
     showLogin();
     return null;
+  }
+  if (res.status === 429 && _retries > 0) {
+    const retryAfter = parseInt(res.headers.get("Retry-After") || "10", 10);
+    await new Promise(r => setTimeout(r, retryAfter * 1000));
+    return apiFetch(path, opts, _retries - 1);
   }
   return res;
 }
@@ -393,10 +398,17 @@ document.getElementById("confirm-ok").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Jotta CLI-status
+// Jotta CLI-status  (debounced – maks ett kall per 5 sekunder)
 // ---------------------------------------------------------------------------
 
-async function checkJottaStatus() {
+let _jottaStatusTimer = null;
+function checkJottaStatus() {
+  if (_jottaStatusTimer) return;
+  _jottaStatusTimer = setTimeout(() => { _jottaStatusTimer = null; }, 5000);
+  _checkJottaStatusNow();
+}
+
+async function _checkJottaStatusNow() {
   const dotEl  = document.getElementById("jotta-dot");
   const textEl = document.getElementById("jotta-status-text");
   const cliEl  = document.getElementById("jotta-cli-status");
@@ -503,21 +515,4 @@ function startPolling() {
   if (pollingTimer) clearInterval(pollingTimer);
   pollingTimer = setInterval(() => {
     const activePage = document.querySelector(".page.active");
-    if (activePage && activePage.id === "page-dashboard") loadDashboard();
-    if (activePage && activePage.id === "page-jobs")      loadFullJobsTable();
-  }, 15000);
-}
-
-// ---------------------------------------------------------------------------
-// Init
-// ---------------------------------------------------------------------------
-
-(async () => {
-  const res = await fetch("/api/auth/status", { credentials: "include" });
-  const d = await res.json();
-  if (d.authenticated) {
-    showApp();
-  } else {
-    showLogin();
-  }
-})();
+    if (activePage && activePage.id ==
