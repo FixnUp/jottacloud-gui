@@ -389,6 +389,7 @@ def jotta_login():
     except ImportError:
         return jsonify({"error": "pexpect ikke installert - bygg nytt Docker-image"}), 500
 
+    debug_log = None
     try:
         debug_log = open(str(LOG_DIR / "jotta_login_debug.log"), "a")
         child = pexpect.spawn("jotta-cli login", encoding="utf-8", timeout=20)
@@ -451,6 +452,9 @@ def jotta_login():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if debug_log and not debug_log.closed:
+            debug_log.close()
 
 
 @app.route("/api/jotta/logout", methods=["POST"])
@@ -484,3 +488,4 @@ def serve_frontend(path):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3600))
     app.run(host="0.0.0.0", port=port, debug=False)
+
