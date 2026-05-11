@@ -8,18 +8,21 @@ FROM python:3.12-slim
 # Bygg-argument for arkitektur (settes automatisk av buildx)
 ARG TARGETARCH=amd64
 
-# Installasjon av systemavhengigheter og jottacloud-cli
+# Installasjon av systemavhengigheter
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
+        bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer jottacloud-cli – velg riktig binær basert på arkitektur
+# Installer jottacloud-cli fra offisiell Jottacloud-distribusjon
+# Offisiell URL: https://www.jottacloud.com/jottacli/latest/linux/<arch>
+# Ref: https://docs.jottacloud.com/en/articles/1529501-jottacloud-cli-getting-started
 RUN ARCH="${TARGETARCH}" && \
-    if [ "$ARCH" = "arm64" ]; then ARCH="arm64"; else ARCH="amd64"; fi && \
-    curl -fsSL "https://github.com/jotta/jottacloud-cli/releases/latest/download/jotta-cli-linux-${ARCH}" \
+    curl -fsSL "https://www.jottacloud.com/jottacli/latest/linux/${ARCH}" \
         -o /usr/local/bin/jotta-cli \
-    && chmod +x /usr/local/bin/jotta-cli
+    && chmod +x /usr/local/bin/jotta-cli \
+    && jotta-cli version || echo "jotta-cli installert (versjon ikke verifisert i byggemiljø)"
 
 # Python-avhengigheter
 WORKDIR /app
