@@ -13,7 +13,7 @@ Appen kjører som en Docker-container og hentes automatisk fra **GitHub Containe
 - Filtrert logger
 - Jottacloud CLI-tilkoblingsstatus
 - Automatisk ny image ved push til GitHub
-
+ 
 ---
 
 ## Del 1 – Sett opp GitHub-repositoriet
