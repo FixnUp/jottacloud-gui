@@ -313,32 +313,40 @@ async function browseFolder(path) {
   }
   const data = await res.json();
 
-  let html = "";
+  // Tøm og bygg liste med JS-elementer (ikke onclick-strenger)
+  listEl.innerHTML = "";
+
   if (data.parent) {
-    html += `<div class="browser-item browser-item--up" onclick="browseFolder('${escHtml(data.parent)}')">
-      <i class="ti ti-arrow-up"></i> ..
-    </div>`;
+    const upEl = document.createElement("div");
+    upEl.className = "browser-item browser-item--up";
+    upEl.innerHTML = `<i class="ti ti-arrow-up"></i> ..`;
+    upEl.addEventListener("click", () => browseFolder(data.parent));
+    listEl.appendChild(upEl);
   }
+
   if (!data.entries.length) {
-    html += `<div class="browser-empty">Ingen undermapper</div>`;
+    listEl.innerHTML += `<div class="browser-empty">Ingen undermapper</div>`;
   } else {
-    html += data.entries.map(e => `
-      <div class="browser-item" onclick="selectFolder('${escHtml(e.path)}', ${e.has_children})">
+    data.entries.forEach(e => {
+      const el = document.createElement("div");
+      el.className = "browser-item";
+      el.dataset.path = e.path;
+      el.innerHTML = `
         <i class="ti ti-folder"></i>
         <span>${escHtml(e.name)}</span>
-        ${e.has_children ? '<i class="ti ti-chevron-right" style="margin-left:auto;font-size:12px;color:var(--color-text-hint)"></i>' : ""}
-      </div>`).join("");
+        ${e.has_children ? '<i class="ti ti-chevron-right" style="margin-left:auto;font-size:12px;color:var(--color-text-hint)"></i>' : ""}`;
+      el.addEventListener("click", () => {
+        // Sett valgt sti i input
+        document.getElementById("job-source").value = e.path;
+        // Marker valgt rad
+        listEl.querySelectorAll(".browser-item").forEach(r => r.classList.remove("selected"));
+        el.classList.add("selected");
+        // Naviger inn om undermapper finnes
+        if (e.has_children) browseFolder(e.path);
+      });
+      listEl.appendChild(el);
+    });
   }
-  listEl.innerHTML = html;
-}
-
-function selectFolder(path, hasChildren) {
-  document.getElementById("job-source").value = path;
-  // Marker valgt
-  document.querySelectorAll(".browser-item").forEach(el => el.classList.remove("selected"));
-  event.currentTarget.classList.add("selected");
-  // Naviger inn om det er undermapper
-  if (hasChildren) browseFolder(path);
 }
 
 document.getElementById("browse-btn").addEventListener("click", () => {
