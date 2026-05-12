@@ -220,6 +220,15 @@ def list_jobs():
         if j["id"] in running_jobs:
             j["progress"] = running_jobs[j["id"]].get("progress", 0)
             j["status"] = "running"
+        # Legg til lokal mappestørrelse
+        src = j.get("source_path", "")
+        if src and Path(src).exists():
+            sz = get_dir_size_bytes(src)
+            j["source_size"] = fmt_size(sz)
+            j["source_size_bytes"] = sz
+        else:
+            j["source_size"] = "–"
+            j["source_size_bytes"] = -1
     return jsonify(jobs)
 
 @app.route("/api/jobs", methods=["POST"])
@@ -303,6 +312,35 @@ def stop_job(job_id):
     return jsonify({"ok": True})
 
 # ---------------------------------------------------------------------------
+# Hjelpefunksjon – mappesstørrelse
+# ---------------------------------------------------------------------------
+
+def get_dir_size_bytes(path: str) -> int:
+    """Returnerer total størrelse i bytes for en mappe. Returnerer -1 ved feil."""
+    try:
+        result = subprocess.run(
+            ["du", "-sb", path],
+            capture_output=True, text=True, timeout=30
+        )
+        if result.returncode == 0:
+            return int(result.stdout.split()[0])
+    except Exception:
+        pass
+    return -1
+
+
+def fmt_size(size_bytes: int) -> str:
+    """Formater bytes til lesbar streng, f.eks. '4,2 TB'."""
+    if size_bytes < 0:
+        return "–"
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} PB"
+
+
+# ---------------------------------------------------------------------------
 # API-endepunkter - Status/dashboard
 # ---------------------------------------------------------------------------
 @app.route("/api/stats")
@@ -320,12 +358,25 @@ def stats():
             last_success = j["last_success"]
             break
 
+    # Beregn total lokal størrelse over alle kildemapper
+    total_bytes = 0
+    has_size = False
+    for j in jobs:
+        src = j.get("source_path", "")
+        if src and Path(src).exists():
+            sz = get_dir_size_bytes(src)
+            if sz >= 0:
+                total_bytes += sz
+                has_size = True
+
     return jsonify({
         "total_jobs": total,
         "successful": successful,
         "running": running,
         "errors": errors,
         "last_success": last_success,
+        "total_size": fmt_size(total_bytes) if has_size else "–",
+        "total_size_bytes": total_bytes if has_size else -1,
     })
 
 @app.route("/api/logs")

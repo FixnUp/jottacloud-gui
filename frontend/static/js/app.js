@@ -167,6 +167,9 @@ async function loadStats() {
   }
 
   document.getElementById("job-count-badge").textContent = `${s.total_jobs} jobb${s.total_jobs === 1 ? "" : "er"}`;
+
+  const totalSizeEl = document.getElementById("stat-total-size");
+  if (totalSizeEl) totalSizeEl.textContent = s.total_size || "–";
 }
 
 async function loadJobsTable() {
@@ -176,7 +179,7 @@ async function loadJobsTable() {
   const tbody = document.getElementById("jobs-tbody");
 
   if (!jobs.length) {
-    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">
       <i class="ti ti-database-off"></i>
       <span>Ingen backup-jobber enda.<br>Klikk «Ny backup-jobb» for å starte.</span></td></tr>`;
     return;
@@ -190,6 +193,7 @@ async function loadJobsTable() {
       <td>${statusBadge(job.status)}</td>
       <td>${progressBar(job)}</td>
       <td style="font-size:12px;color:var(--color-text-muted)">${fmtRelative(job.last_run)}</td>
+      <td style="font-size:12px;font-weight:500;color:var(--color-text)">${escHtml(job.source_size || "–")}</td>
       <td>
         <div class="td-actions">
           ${job.status === "running"
@@ -213,7 +217,7 @@ async function loadFullJobsTable() {
   const tbody = document.getElementById("jobs-full-tbody");
 
   if (!jobs.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="empty-state"><i class="ti ti-database-off"></i><span>Ingen jobber</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="empty-state"><i class="ti ti-database-off"></i><span>Ingen jobber</span></td></tr>`;
     return;
   }
 
@@ -225,6 +229,7 @@ async function loadFullJobsTable() {
       <td><code style="font-size:11px;color:var(--color-text-muted)">${escHtml(job.schedule)}</code></td>
       <td>${statusBadge(job.status)}</td>
       <td style="font-size:12px;color:var(--color-text-muted)">${fmtDate(job.last_run)}</td>
+      <td style="font-size:12px;font-weight:500;color:var(--color-text)">${escHtml(job.source_size || "–")}</td>
       <td><span class="badge ${job.enabled ? "badge-success" : "badge-gray"}">${job.enabled ? "Ja" : "Nei"}</span></td>
       <td>
         <div class="td-actions">
