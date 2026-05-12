@@ -84,23 +84,27 @@
 
       <!-- Metrikk-kort -->
       <div class="metric-grid" id="metric-grid">
-        <div class="metric-card">
-          <div class="metric-label"><i class="ti ti-clock"></i> Siste backup</div>
+        <div class="metric-card" id="card-last-backup">
+          <div class="metric-icon metric-icon--green"><i class="ti ti-clock-check"></i></div>
+          <div class="metric-label">Siste backup</div>
           <div class="metric-value" id="stat-last-backup">–</div>
           <div class="metric-sub" id="stat-last-backup-sub">Ingen data</div>
         </div>
-        <div class="metric-card">
-          <div class="metric-label"><i class="ti ti-briefcase"></i> Totale jobber</div>
+        <div class="metric-card" id="card-total">
+          <div class="metric-icon metric-icon--blue"><i class="ti ti-database"></i></div>
+          <div class="metric-label">Totale jobber</div>
           <div class="metric-value" id="stat-total-jobs">0</div>
           <div class="metric-sub" id="stat-running">0 kjører nå</div>
         </div>
-        <div class="metric-card">
-          <div class="metric-label"><i class="ti ti-check"></i> Vellykkede</div>
+        <div class="metric-card" id="card-success">
+          <div class="metric-icon metric-icon--green"><i class="ti ti-circle-check"></i></div>
+          <div class="metric-label">Vellykkede</div>
           <div class="metric-value" id="stat-successful">0</div>
           <div class="metric-sub" id="stat-errors-sub">0 feil</div>
         </div>
-        <div class="metric-card">
-          <div class="metric-label"><i class="ti ti-refresh"></i> Status</div>
+        <div class="metric-card" id="card-status">
+          <div class="metric-icon metric-icon--gray" id="stat-status-icon"><i class="ti ti-activity"></i></div>
+          <div class="metric-label">Systemstatus</div>
           <div class="metric-value" id="stat-status">–</div>
           <div class="metric-sub">Oppdateres automatisk</div>
         </div>
@@ -327,25 +331,48 @@
       <input type="hidden" id="job-id" />
       <div class="form-group">
         <label for="job-name">Jobbens navn <span class="required">*</span></label>
-        <input type="text" id="job-name" placeholder="f.eks. Dokumenter" required />
+        <input type="text" id="job-name" placeholder="f.eks. Immich, Dokumenter" required />
       </div>
       <div class="form-group">
         <label for="job-source">Kildemappe (på serveren) <span class="required">*</span></label>
-        <input type="text" id="job-source" placeholder="/mnt/data/dokumenter" required />
+        <div class="input-with-btn">
+          <input type="text" id="job-source" placeholder="/mnt/pool/mappe" required />
+          <button type="button" class="btn btn-ghost btn-sm" id="browse-btn" title="Bla gjennom mapper">
+            <i class="ti ti-folder-open"></i> Velg
+          </button>
+        </div>
+        <!-- Mappevelger -->
+        <div id="folder-browser" class="browser-box hidden">
+          <div class="browser-header">
+            <i class="ti ti-folder"></i>
+            <span id="browser-path">/mnt</span>
+          </div>
+          <div class="browser-list" id="browser-list">
+            <div class="browser-loading">Laster...</div>
+          </div>
+        </div>
       </div>
       <div class="form-group">
         <label for="job-dest">Destinasjon på Jottacloud</label>
         <input type="text" id="job-dest" placeholder="Jotta/Arkiv/Dokumenter" />
-        <span class="form-hint">La stå tom for automatisk navn</span>
+        <span class="form-hint">La stå tom for å bruke jobbnavnet automatisk</span>
       </div>
       <div class="form-group">
-        <label for="job-schedule">Cron-plan <span class="required">*</span></label>
-        <input type="text" id="job-schedule" placeholder="0 3 * * *" required />
+        <label for="job-schedule">Kjøreplan <span class="required">*</span></label>
+        <select id="job-schedule-preset" style="margin-bottom:6px;">
+          <option value="">— Velg forhåndsinnstilling —</option>
+          <option value="0 2 * * *">Daglig kl 02:00</option>
+          <option value="0 3 * * *">Daglig kl 03:00</option>
+          <option value="0 4 * * *">Daglig kl 04:00</option>
+          <option value="0 2 * * 0">Ukentlig – søndag kl 02:00</option>
+          <option value="0 2 * * 6">Ukentlig – lørdag kl 02:00</option>
+          <option value="0 2 1 * *">Månedlig – 1. i måneden kl 02:00</option>
+          <option value="custom">Egendefinert cron...</option>
+        </select>
+        <input type="text" id="job-schedule" placeholder="0 3 * * *" required class="hidden" />
         <span class="form-hint">
-          Format: minutt time dag måned ukedag &nbsp;·&nbsp;
-          <a href="https://crontab.guru" target="_blank">crontab.guru</a><br/>
-          Eksempler: <code>0 3 * * *</code> = daglig kl 03:00 &nbsp;·&nbsp;
-          <code>0 2 * * 0</code> = ukentlig søndag kl 02:00
+          Egendefinert: minutt time dag måned ukedag &nbsp;·&nbsp;
+          <a href="https://crontab.guru" target="_blank">crontab.guru</a>
         </span>
       </div>
       <div class="form-group form-toggle">

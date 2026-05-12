@@ -1,35 +1,26 @@
 /* =====================================================================
-   JottaBackup GUI – Frontend JavaScript
+   JottaBackup GUI – Frontend JavaScript v2
    ===================================================================== */
 
-const API = "";  // Samme opprinnelse
+const API = "";
 
 // ---------------------------------------------------------------------------
 // Hjelpefunksjoner
 // ---------------------------------------------------------------------------
 
-async function apiFetch(path, opts = {}, _retries = 2) {
+async function apiFetch(path, opts = {}) {
   const res = await fetch(API + path, {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
     ...opts,
   });
-  if (res.status === 401) {
-    showLogin();
-    return null;
-  }
-  if (res.status === 429 && _retries > 0) {
-    const retryAfter = parseInt(res.headers.get("Retry-After") || "10", 10);
-    await new Promise(r => setTimeout(r, retryAfter * 1000));
-    return apiFetch(path, opts, _retries - 1);
-  }
+  if (res.status === 401) { showLogin(); return null; }
   return res;
 }
 
 function fmtDate(iso) {
   if (!iso) return "–";
-  const d = new Date(iso);
-  return d.toLocaleString("no-NO", { dateStyle: "short", timeStyle: "short" });
+  return new Date(iso).toLocaleString("no-NO", { dateStyle: "short", timeStyle: "short" });
 }
 
 function fmtRelative(iso) {
@@ -46,7 +37,7 @@ function fmtRelative(iso) {
 
 function statusBadge(status) {
   const map = {
-    success: { cls: "badge-success", icon: "ti-check", label: "Ferdig" },
+    success: { cls: "badge-success", icon: "ti-check",  label: "Ferdig" },
     running: { cls: "badge-warn",    icon: "ti-loader", label: "Kjører" },
     error:   { cls: "badge-error",   icon: "ti-x",      label: "Feil" },
     idle:    { cls: "badge-gray",    icon: "ti-minus",  label: "Venter" },
@@ -57,16 +48,14 @@ function statusBadge(status) {
 
 function progressBar(job) {
   const pct = job.progress || 0;
-  const barCls = job.status === "error" ? "progress-bar progress-bar--error" : "progress-bar";
-  return `<div class="progress-wrap"><div class="${barCls}" style="width:${pct}%"></div></div>`;
+  const cls = job.status === "error" ? "progress-bar progress-bar--error" : "progress-bar";
+  return `<div class="progress-wrap"><div class="${cls}" style="width:${pct}%"></div></div>`;
 }
 
 function escHtml(str) {
   return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // ---------------------------------------------------------------------------
@@ -91,20 +80,13 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   const pw = document.getElementById("password").value;
   const errEl = document.getElementById("login-error");
   errEl.classList.add("hidden");
-
   const res = await fetch("/api/login", {
-    method: "POST",
-    credentials: "include",
+    method: "POST", credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password: pw }),
   });
-
-  if (res.ok) {
-    showApp();
-  } else {
-    errEl.classList.remove("hidden");
-    document.getElementById("password").value = "";
-  }
+  if (res.ok) { showApp(); }
+  else { errEl.classList.remove("hidden"); document.getElementById("password").value = ""; }
 });
 
 document.getElementById("logout-btn").addEventListener("click", async () => {
@@ -122,7 +104,6 @@ function showPage(pageId) {
   const page = document.getElementById(`page-${pageId}`);
   if (page) page.classList.add("active");
   document.querySelectorAll(`[data-page="${pageId}"]`).forEach(el => el.classList.add("active"));
-
   if (pageId === "dashboard") loadDashboard();
   if (pageId === "jobs")      loadFullJobsTable();
   if (pageId === "logs")      loadLogs();
@@ -130,10 +111,7 @@ function showPage(pageId) {
 }
 
 document.querySelectorAll("[data-page]").forEach(el => {
-  el.addEventListener("click", e => {
-    e.preventDefault();
-    showPage(el.dataset.page);
-  });
+  el.addEventListener("click", e => { e.preventDefault(); showPage(el.dataset.page); });
 });
 
 // ---------------------------------------------------------------------------
@@ -150,17 +128,43 @@ async function loadStats() {
   const s = await res.json();
 
   document.getElementById("stat-total-jobs").textContent = s.total_jobs;
-  document.getElementById("stat-running").textContent = `${s.running} kjører nå`;
+  document.getElementById("stat-running").textContent = s.running > 0 ? `${s.running} kjører nå` : "Ingen aktive";
   document.getElementById("stat-successful").textContent = s.successful;
-  document.getElementById("stat-errors-sub").textContent = `${s.errors} feil`;
+  document.getElementById("stat-errors-sub").textContent = s.errors > 0 ? `${s.errors} med feil` : "Ingen feil";
   document.getElementById("stat-last-backup").textContent = fmtRelative(s.last_success);
   document.getElementById("stat-last-backup-sub").textContent = s.last_success ? fmtDate(s.last_success) : "Ingen data";
 
-  const statusEl = document.getElementById("stat-status");
-  if (s.errors > 0) { statusEl.textContent = "⚠ Feil"; statusEl.style.color = "var(--color-danger)"; }
-  else if (s.running > 0) { statusEl.textContent = "↻ Aktiv"; statusEl.style.color = "var(--color-warn)"; }
-  else if (s.successful > 0) { statusEl.textContent = "✓ OK"; statusEl.style.color = "var(--color-primary)"; }
-  else { statusEl.textContent = "–"; statusEl.style.color = ""; }
+  // Oppdater status-kort
+  const statusEl  = document.getElementById("stat-status");
+  const iconEl    = document.getElementById("stat-status-icon");
+  const cardEl    = document.getElementById("card-status");
+  const cardSucc  = document.getElementById("card-success");
+
+  if (s.errors > 0) {
+    statusEl.textContent = "Feil";
+    iconEl.className = "metric-icon metric-icon--red";
+    iconEl.innerHTML = '<i class="ti ti-alert-triangle"></i>';
+    cardEl.className = "metric-card card--error";
+    cardSucc.className = "metric-card card--error";
+  } else if (s.running > 0) {
+    statusEl.textContent = "Aktiv";
+    iconEl.className = "metric-icon metric-icon--warn";
+    iconEl.innerHTML = '<i class="ti ti-refresh"></i>';
+    cardEl.className = "metric-card card--warn";
+    cardSucc.className = "metric-card card--success";
+  } else if (s.successful > 0) {
+    statusEl.textContent = "OK";
+    iconEl.className = "metric-icon metric-icon--green";
+    iconEl.innerHTML = '<i class="ti ti-circle-check"></i>';
+    cardEl.className = "metric-card card--success";
+    cardSucc.className = "metric-card card--success";
+  } else {
+    statusEl.textContent = "Venter";
+    iconEl.className = "metric-icon metric-icon--gray";
+    iconEl.innerHTML = '<i class="ti ti-activity"></i>';
+    cardEl.className = "metric-card";
+    cardSucc.className = "metric-card";
+  }
 
   document.getElementById("job-count-badge").textContent = `${s.total_jobs} jobb${s.total_jobs === 1 ? "" : "er"}`;
 }
@@ -172,8 +176,9 @@ async function loadJobsTable() {
   const tbody = document.getElementById("jobs-tbody");
 
   if (!jobs.length) {
-    tbody.innerHTML = `<tr id="jobs-empty-row"><td colspan="7" class="empty-state">
-      <i class="ti ti-database-off"></i><span>Ingen backup-jobber enda. Klikk «Ny backup-jobb».</span></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">
+      <i class="ti ti-database-off"></i>
+      <span>Ingen backup-jobber enda.<br>Klikk «Ny backup-jobb» for å starte.</span></td></tr>`;
     return;
   }
 
@@ -181,25 +186,24 @@ async function loadJobsTable() {
     <tr data-id="${job.id}">
       <td><span class="job-name">${escHtml(job.name)}</span></td>
       <td><span class="path-code" title="${escHtml(job.source_path)}">${escHtml(job.source_path)}</span></td>
-      <td><code style="font-size:12px">${escHtml(job.schedule)}</code></td>
+      <td><code style="font-size:11px;color:var(--color-text-muted)">${escHtml(job.schedule)}</code></td>
       <td>${statusBadge(job.status)}</td>
       <td>${progressBar(job)}</td>
-      <td style="font-size:12px; color:var(--color-text-muted)">${fmtRelative(job.last_run)}</td>
+      <td style="font-size:12px;color:var(--color-text-muted)">${fmtRelative(job.last_run)}</td>
       <td>
         <div class="td-actions">
           ${job.status === "running"
             ? `<button class="icon-btn" onclick="stopJob('${job.id}')" title="Stopp"><i class="ti ti-player-pause"></i></button>`
             : `<button class="icon-btn" onclick="runJob('${job.id}')" title="Kjør nå"><i class="ti ti-player-play"></i></button>`}
           <button class="icon-btn" onclick="editJob('${job.id}')" title="Rediger"><i class="ti ti-edit"></i></button>
-          <button class="icon-btn btn-danger-ghost" onclick="confirmDelete('${job.id}', '${escHtml(job.name)}')" title="Slett"><i class="ti ti-trash"></i></button>
+          <button class="icon-btn btn-danger-ghost" onclick="confirmDelete('${job.id}','${escHtml(job.name)}')" title="Slett"><i class="ti ti-trash"></i></button>
         </div>
       </td>
-    </tr>
-  `).join("");
+    </tr>`).join("");
 }
 
 // ---------------------------------------------------------------------------
-// Full jobb-tabell (Backup-jobber-siden)
+// Full jobb-tabell
 // ---------------------------------------------------------------------------
 
 async function loadFullJobsTable() {
@@ -218,9 +222,9 @@ async function loadFullJobsTable() {
       <td><span class="job-name">${escHtml(job.name)}</span></td>
       <td><span class="path-code" title="${escHtml(job.source_path)}">${escHtml(job.source_path)}</span></td>
       <td><span class="path-code" title="${escHtml(job.dest_path)}">${escHtml(job.dest_path || "–")}</span></td>
-      <td><code style="font-size:12px">${escHtml(job.schedule)}</code></td>
+      <td><code style="font-size:11px;color:var(--color-text-muted)">${escHtml(job.schedule)}</code></td>
       <td>${statusBadge(job.status)}</td>
-      <td style="font-size:12px; color:var(--color-text-muted)">${fmtDate(job.last_run)}</td>
+      <td style="font-size:12px;color:var(--color-text-muted)">${fmtDate(job.last_run)}</td>
       <td><span class="badge ${job.enabled ? "badge-success" : "badge-gray"}">${job.enabled ? "Ja" : "Nei"}</span></td>
       <td>
         <div class="td-actions">
@@ -228,11 +232,10 @@ async function loadFullJobsTable() {
             ? `<button class="icon-btn" onclick="stopJob('${job.id}')" title="Stopp"><i class="ti ti-player-pause"></i></button>`
             : `<button class="icon-btn" onclick="runJob('${job.id}')" title="Kjør nå"><i class="ti ti-player-play"></i></button>`}
           <button class="icon-btn" onclick="editJob('${job.id}')" title="Rediger"><i class="ti ti-edit"></i></button>
-          <button class="icon-btn btn-danger-ghost" onclick="confirmDelete('${job.id}', '${escHtml(job.name)}')" title="Slett"><i class="ti ti-trash"></i></button>
+          <button class="icon-btn btn-danger-ghost" onclick="confirmDelete('${job.id}','${escHtml(job.name)}')" title="Slett"><i class="ti ti-trash"></i></button>
         </div>
       </td>
-    </tr>
-  `).join("");
+    </tr>`).join("");
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +247,7 @@ async function loadRecentLogs() {
   if (!res) return;
   const logs = await res.json();
   const el = document.getElementById("recent-logs-body");
-  el.innerHTML = logs.length ? logs.map(renderLogEntry).join("") : `<div class="log-empty">Ingen hendelser</div>`;
+  el.innerHTML = logs.length ? logs.map(renderLogEntry).join("") : `<div class="log-empty">Ingen hendelser enda</div>`;
 }
 
 async function loadLogs() {
@@ -266,10 +269,9 @@ function renderLogEntry(entry) {
     error:   { cls: "log-icon--error",   icon: "ti-circle-x" },
   };
   const s = icons[entry.level] || icons.info;
-  const ts = fmtDate(entry.timestamp);
   return `<div class="log-entry">
     <i class="ti ${s.icon} log-icon ${s.cls}"></i>
-    <span class="log-time">${ts}</span>
+    <span class="log-time">${fmtDate(entry.timestamp)}</span>
     <span class="log-msg">${escHtml(entry.message)}</span>
   </div>`;
 }
@@ -283,7 +285,7 @@ document.getElementById("refresh-logs-btn").addEventListener("click", loadLogs);
 
 async function runJob(jobId) {
   const res = await apiFetch(`/api/jobs/${jobId}/run`, { method: "POST" });
-  if (res && res.ok) { loadDashboard(); }
+  if (res && res.ok) loadDashboard();
   else if (res) { const d = await res.json(); alert(d.error || "Kunne ikke starte jobb"); }
 }
 
@@ -291,6 +293,80 @@ async function stopJob(jobId) {
   await apiFetch(`/api/jobs/${jobId}/stop`, { method: "POST" });
   loadDashboard();
 }
+
+// ---------------------------------------------------------------------------
+// Mappevelger
+// ---------------------------------------------------------------------------
+
+let _browserVisible = false;
+
+async function browseFolder(path) {
+  const listEl = document.getElementById("browser-list");
+  const pathEl = document.getElementById("browser-path");
+  listEl.innerHTML = `<div class="browser-loading"><i class="ti ti-loader"></i> Laster...</div>`;
+  pathEl.textContent = path;
+
+  const res = await apiFetch(`/api/browse?path=${encodeURIComponent(path)}`);
+  if (!res || !res.ok) {
+    listEl.innerHTML = `<div class="browser-empty">Kunne ikke laste mappe</div>`;
+    return;
+  }
+  const data = await res.json();
+
+  let html = "";
+  if (data.parent) {
+    html += `<div class="browser-item browser-item--up" onclick="browseFolder('${escHtml(data.parent)}')">
+      <i class="ti ti-arrow-up"></i> ..
+    </div>`;
+  }
+  if (!data.entries.length) {
+    html += `<div class="browser-empty">Ingen undermapper</div>`;
+  } else {
+    html += data.entries.map(e => `
+      <div class="browser-item" onclick="selectFolder('${escHtml(e.path)}', ${e.has_children})">
+        <i class="ti ti-folder"></i>
+        <span>${escHtml(e.name)}</span>
+        ${e.has_children ? '<i class="ti ti-chevron-right" style="margin-left:auto;font-size:12px;color:var(--color-text-hint)"></i>' : ""}
+      </div>`).join("");
+  }
+  listEl.innerHTML = html;
+}
+
+function selectFolder(path, hasChildren) {
+  document.getElementById("job-source").value = path;
+  // Marker valgt
+  document.querySelectorAll(".browser-item").forEach(el => el.classList.remove("selected"));
+  event.currentTarget.classList.add("selected");
+  // Naviger inn om det er undermapper
+  if (hasChildren) browseFolder(path);
+}
+
+document.getElementById("browse-btn").addEventListener("click", () => {
+  const browser = document.getElementById("folder-browser");
+  _browserVisible = !_browserVisible;
+  if (_browserVisible) {
+    browser.classList.remove("hidden");
+    const current = document.getElementById("job-source").value || "/mnt";
+    browseFolder(current);
+  } else {
+    browser.classList.add("hidden");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Cron-preset
+// ---------------------------------------------------------------------------
+
+document.getElementById("job-schedule-preset").addEventListener("change", function() {
+  const scheduleInput = document.getElementById("job-schedule");
+  if (this.value === "custom") {
+    scheduleInput.classList.remove("hidden");
+    scheduleInput.focus();
+  } else if (this.value) {
+    scheduleInput.classList.add("hidden");
+    scheduleInput.value = this.value;
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Modal: Ny / rediger jobb
@@ -302,9 +378,28 @@ function openModal(job = null) {
   document.getElementById("job-name").value = job ? job.name : "";
   document.getElementById("job-source").value = job ? job.source_path : "";
   document.getElementById("job-dest").value = job ? (job.dest_path || "") : "";
-  document.getElementById("job-schedule").value = job ? job.schedule : "0 3 * * *";
   document.getElementById("job-enabled").checked = job ? job.enabled : true;
   document.getElementById("job-form-error").classList.add("hidden");
+
+  // Sett cron-preset
+  const scheduleInput = document.getElementById("job-schedule");
+  const presetSelect  = document.getElementById("job-schedule-preset");
+  const schedule = job ? job.schedule : "0 3 * * *";
+  scheduleInput.value = schedule;
+
+  const presetOption = [...presetSelect.options].find(o => o.value === schedule);
+  if (presetOption && presetOption.value !== "custom") {
+    presetSelect.value = schedule;
+    scheduleInput.classList.add("hidden");
+  } else {
+    presetSelect.value = "custom";
+    scheduleInput.classList.remove("hidden");
+  }
+
+  // Skjul mappevelger
+  document.getElementById("folder-browser").classList.add("hidden");
+  _browserVisible = false;
+
   document.getElementById("job-modal").classList.remove("hidden");
   document.getElementById("job-name").focus();
 }
@@ -325,7 +420,7 @@ document.getElementById("new-job-btn").addEventListener("click", () => openModal
 document.getElementById("new-job-btn2").addEventListener("click", () => openModal());
 document.getElementById("modal-close").addEventListener("click", closeModal);
 document.getElementById("modal-cancel").addEventListener("click", closeModal);
-document.getElementById("job-modal").addEventListener("click", (e) => {
+document.getElementById("job-modal").addEventListener("click", e => {
   if (e.target === document.getElementById("job-modal")) closeModal();
 });
 
@@ -334,15 +429,18 @@ document.getElementById("modal-save").addEventListener("click", async () => {
   const errEl = document.getElementById("job-form-error");
   errEl.classList.add("hidden");
 
+  const schedule = document.getElementById("job-schedule").value.trim() ||
+                   document.getElementById("job-schedule-preset").value;
+
   const payload = {
     name:        document.getElementById("job-name").value.trim(),
     source_path: document.getElementById("job-source").value.trim(),
     dest_path:   document.getElementById("job-dest").value.trim(),
-    schedule:    document.getElementById("job-schedule").value.trim(),
+    schedule:    schedule,
     enabled:     document.getElementById("job-enabled").checked,
   };
 
-  if (!payload.name || !payload.source_path || !payload.schedule) {
+  if (!payload.name || !payload.source_path || !payload.schedule || payload.schedule === "custom") {
     errEl.textContent = "Fyll ut alle obligatoriske felt.";
     errEl.classList.remove("hidden");
     return;
@@ -371,8 +469,7 @@ let _deleteJobId = null;
 
 function confirmDelete(jobId, jobName) {
   _deleteJobId = jobId;
-  document.getElementById("confirm-message").textContent =
-    `Er du sikker på at du vil slette jobben «${jobName}»?`;
+  document.getElementById("confirm-message").textContent = `Er du sikker på at du vil slette jobben «${jobName}»?`;
   document.getElementById("confirm-modal").classList.remove("hidden");
 }
 
@@ -383,32 +480,21 @@ function closeConfirm() {
 
 document.getElementById("confirm-close").addEventListener("click", closeConfirm);
 document.getElementById("confirm-cancel").addEventListener("click", closeConfirm);
-document.getElementById("confirm-modal").addEventListener("click", (e) => {
+document.getElementById("confirm-modal").addEventListener("click", e => {
   if (e.target === document.getElementById("confirm-modal")) closeConfirm();
 });
 
 document.getElementById("confirm-ok").addEventListener("click", async () => {
   if (!_deleteJobId) return;
   const res = await apiFetch(`/api/jobs/${_deleteJobId}`, { method: "DELETE" });
-  if (res && res.ok) {
-    closeConfirm();
-    loadDashboard();
-    loadFullJobsTable();
-  }
+  if (res && res.ok) { closeConfirm(); loadDashboard(); loadFullJobsTable(); }
 });
 
 // ---------------------------------------------------------------------------
-// Jotta CLI-status  (debounced – maks ett kall per 5 sekunder)
+// Jotta CLI-status
 // ---------------------------------------------------------------------------
 
-let _jottaStatusTimer = null;
-function checkJottaStatus() {
-  if (_jottaStatusTimer) return;
-  _jottaStatusTimer = setTimeout(() => { _jottaStatusTimer = null; }, 5000);
-  _checkJottaStatusNow();
-}
-
-async function _checkJottaStatusNow() {
+async function checkJottaStatus() {
   const dotEl  = document.getElementById("jotta-dot");
   const textEl = document.getElementById("jotta-status-text");
   const cliEl  = document.getElementById("jotta-cli-status");
@@ -422,12 +508,14 @@ async function _checkJottaStatusNow() {
 
   if (d.connected) {
     dotEl.className = "status-dot status-dot--green";
-    textEl.textContent = "Tilkoblet Jotta";
-    if (cliEl) cliEl.innerHTML = `<span class="badge badge-success"><i class="ti ti-check"></i> Tilkoblet</span><pre style="margin-top:8px;font-size:11px;color:var(--color-text-muted);white-space:pre-wrap">${escHtml(d.output)}</pre>`;
+    textEl.textContent = "Tilkoblet";
+    if (cliEl) cliEl.innerHTML = `<span class="badge badge-success"><i class="ti ti-check"></i> Tilkoblet Jottacloud</span>
+      <pre style="margin-top:10px;font-size:11px;color:var(--color-text-muted);white-space:pre-wrap;background:var(--color-bg);padding:10px;border-radius:6px">${escHtml(d.output)}</pre>`;
   } else {
     dotEl.className = "status-dot status-dot--red";
     textEl.textContent = "Ikke tilkoblet";
-    if (cliEl) cliEl.innerHTML = `<span class="badge badge-error"><i class="ti ti-x"></i> Ikke tilkoblet</span><pre style="margin-top:8px;font-size:11px;color:var(--color-danger);white-space:pre-wrap">${escHtml(d.output)}</pre>`;
+    if (cliEl) cliEl.innerHTML = `<span class="badge badge-error"><i class="ti ti-x"></i> Ikke tilkoblet</span>
+      <pre style="margin-top:10px;font-size:11px;color:var(--color-danger);white-space:pre-wrap;background:var(--color-danger-lt);padding:10px;border-radius:6px">${escHtml(d.output)}</pre>`;
   }
 }
 
@@ -452,16 +540,16 @@ function closeJottaLoginModal() {
 document.getElementById("jotta-login-btn").addEventListener("click", openJottaLoginModal);
 document.getElementById("jotta-modal-close").addEventListener("click", closeJottaLoginModal);
 document.getElementById("jotta-modal-cancel").addEventListener("click", closeJottaLoginModal);
-document.getElementById("jotta-login-modal").addEventListener("click", (e) => {
+document.getElementById("jotta-login-modal").addEventListener("click", e => {
   if (e.target === document.getElementById("jotta-login-modal")) closeJottaLoginModal();
 });
 
 document.getElementById("jotta-modal-save").addEventListener("click", async () => {
-  const token = document.getElementById("jotta-token").value.trim();
+  const token      = document.getElementById("jotta-token").value.trim();
   const deviceName = document.getElementById("jotta-device-name").value.trim();
-  const errEl = document.getElementById("jotta-login-error");
-  const successEl = document.getElementById("jotta-login-success");
-  const btn = document.getElementById("jotta-modal-save");
+  const errEl      = document.getElementById("jotta-login-error");
+  const successEl  = document.getElementById("jotta-login-success");
+  const btn        = document.getElementById("jotta-modal-save");
 
   errEl.classList.add("hidden");
   successEl.style.display = "none";
@@ -484,15 +572,12 @@ document.getElementById("jotta-modal-save").addEventListener("click", async () =
   btn.innerHTML = '<i class="ti ti-login"></i> Logg inn';
 
   if (res && res.ok) {
-    successEl.textContent = "Innlogging vellykket! Jottacloud er nå tilkoblet.";
+    successEl.textContent = "Innlogging vellykket!";
     successEl.style.display = "block";
-    setTimeout(() => {
-      closeJottaLoginModal();
-      checkJottaStatus();
-    }, 2000);
+    setTimeout(() => { closeJottaLoginModal(); checkJottaStatus(); }, 2000);
   } else if (res) {
     const d = await res.json();
-    errEl.textContent = d.error || "Innlogging feilet. Prøv med et nytt token.";
+    errEl.textContent = d.error || "Innlogging feilet. Prøv igjen.";
     errEl.classList.remove("hidden");
   }
 });
@@ -500,13 +585,11 @@ document.getElementById("jotta-modal-save").addEventListener("click", async () =
 document.getElementById("jotta-logout-btn").addEventListener("click", async () => {
   if (!confirm("Er du sikker på at du vil logge ut av Jottacloud?")) return;
   const res = await apiFetch("/api/jotta/logout", { method: "POST" });
-  if (res && res.ok) {
-    checkJottaStatus();
-  }
+  if (res && res.ok) checkJottaStatus();
 });
 
 // ---------------------------------------------------------------------------
-// Auto-polling (oppdater hvert 15. sekund)
+// Auto-polling
 // ---------------------------------------------------------------------------
 
 let pollingTimer = null;
@@ -527,9 +610,5 @@ function startPolling() {
 (async () => {
   const res = await fetch("/api/auth/status", { credentials: "include" });
   const d = await res.json();
-  if (d.authenticated) {
-    showApp();
-  } else {
-    showLogin();
-  }
+  if (d.authenticated) { showApp(); } else { showLogin(); }
 })();

@@ -471,6 +471,35 @@ def jotta_logout():
         return jsonify({"error": str(e)}), 500
 
 # ---------------------------------------------------------------------------
+# Mappelisting for mappevelger
+# ---------------------------------------------------------------------------
+
+@app.route("/api/browse")
+@login_required
+def browse():
+    """List mapper i en gitt sti. Standard: /mnt"""
+    path = request.args.get("path", "/mnt")
+    try:
+        p = Path(path)
+        if not p.exists() or not p.is_dir():
+            return jsonify({"error": "Mappe ikke funnet", "path": path}), 404
+        entries = []
+        for child in sorted(p.iterdir()):
+            try:
+                if child.is_dir():
+                    entries.append({
+                        "name": child.name,
+                        "path": str(child),
+                        "has_children": any(True for _ in child.iterdir() if _.is_dir()),
+                    })
+            except PermissionError:
+                pass
+        parent = str(p.parent) if str(p) != "/" else None
+        return jsonify({"path": str(p), "parent": parent, "entries": entries})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ---------------------------------------------------------------------------
 # Frontend-serving
 # ---------------------------------------------------------------------------
 @app.route("/", defaults={"path": ""})
