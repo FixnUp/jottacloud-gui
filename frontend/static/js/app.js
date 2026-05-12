@@ -515,4 +515,24 @@ function startPolling() {
   if (pollingTimer) clearInterval(pollingTimer);
   pollingTimer = setInterval(() => {
     const activePage = document.querySelector(".page.active");
-    if (activePage && activePage.id ==
+    if (activePage && activePage.id === "page-dashboard") loadDashboard();
+    if (activePage && activePage.id === "page-jobs")      loadFullJobsTable();
+  }, 15000);
+}
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+
+(async () => {
+  const res = await fetch("/api/auth/status", { credentials: "include" });
+  const d = await res.json();
+  if (d.authenticated) {
+    showApp();
+  } else {
+    showLogin();
+  }
+})();
+n();
+  }
+})();

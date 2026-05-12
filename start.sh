@@ -5,16 +5,15 @@
 # =====================================================================
 
 echo "Starter jottad daemon..."
-jottad &
-JOTTAD_PID=$!
+jottad datadir /data/.jottad stdoutlog &
 
-# Vent til jottad er klar (maks 10 sekunder)
-for i in $(seq 1 10); do
+# Vent til jottad svarer (maks 30 sekunder)
+for i in $(seq 1 30); do
     if jotta-cli status > /dev/null 2>&1; then
-        echo "jottad er klar."
+        echo "jottad er klar etter ${i} sekunder."
         break
     fi
-    echo "Venter på jottad... ($i/10)"
+    echo "Venter på jottad... ($i/30)"
     sleep 1
 done
 
