@@ -533,6 +533,3 @@ function startPolling() {
     showLogin();
   }
 })();
-n();
-  }
-})();
